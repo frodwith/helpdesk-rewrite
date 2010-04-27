@@ -1,0 +1,30 @@
+#template                { display: none }
+.ticket                  { background-color: white; float: left: width: 100% }
+
+.comments                { padding: 11px }
+.comments.odd            { background-color: #D8D8D8 }
+.comments.even           { background-color: white }
+
+.left-side               { margin-right: 300px; float: left }
+.right-side              { margin-left: -250px; float: left }
+.footer                  { clear: both }
+
+.comments .header        { text-align: center }
+.comments .author        { font-weight: bold }
+.comments .timestamp     { float: left; font-weight: bold }
+.comments .status-change { font-style: italic }
+.comments .body          { padding-top: 5px; padding-bottom: 5px }
+
+.right-side .edit-button,
+.right-side .status      { padding: 10px 0; text-align: center; width: 120px;
+                           outline: thin solid black }
+.right-side .status      { float: left; font-size: 17pt; color: white; 
+	                       background-color: red }
+.right-side .edit-button { float: left; margin-left: 5px; cursor: pointer }
+
+.visibility              { width: 100%; padding: 5px 0; text-align: center;
+                           outline: thin solid black; margin: 10px 0;
+					       font-weight: bold }
+.visibility.public       { background-color: lime }
+.visibility.private      { background-color: red; color: white }
+ul.comments li           { list-style-type: none }

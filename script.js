@@ -1,11 +1,71 @@
 /*global YUI */
 
-YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'node', 'tabview', 'event', function (Y) {
+YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node', 'tabview', 'event', function (Y) {
     var YAHOO = Y.YUI2;
+
+    var Ticket = {
+        render: function(template) {
+            var self = this;
+            template = Y.one(template).cloneNode(true);
+            template.removeAttribute('id');
+
+            var status = function (a) {
+                return self.helpdesk.status[a.item.status];
+            };
+
+            var directives = {
+                '.id'    : 'id',
+                '.title' : 'title',
+                '.comments' : {
+                    'c<-comments' : {
+                        '.timestamp'   : 'c.timestamp',
+                        '.author'      : function (a) {
+                            return self.helpdesk.users[a.item.author];
+                        },
+                        '.author@href' : function (a) {
+                            return "http://really.a.url/users/" + a.item.author;
+                        },
+                        '@class+'      : function (a) {
+                            return a.pos % 2 ? ' odd' : ' even';
+                        },
+                        '.body'        : 'c.body',
+                        '.status'      : status
+                    }
+                },
+                '.right-side .status' : status,
+                '.visibility' : function (a) {
+                    return a.context.visibility === 'public' ? 'Public' : 'Private';
+                },
+                '.visibility@class+' : function (a) {
+                    return ' ' + a.context.visibility;
+                },
+            };
+
+            // pure assumes a parent node
+            var container = Y.Node.create('<div>');
+            container.append(template);
+            $p(Y.Node.getDOMNode(template)).render(this.data, directives);
+
+            var rendered = container.get('children').item(0);
+            rendered.remove();
+
+            Y.on('click', function () {
+                alert('edit dialog');
+            }, rendered.one('.edit-button'));
+
+            return rendered;
+        },
+        create: function (helpdesk, data) {
+            var self      = Y.Object(this);
+            self.helpdesk = helpdesk;
+            self.data     = data;
+            return self;
+        }
+    };
 
     var Helpdesk = {
         status: {
-            'pending'      : 'Pending',
+            'open'         : 'Open',
             'acknowledged' : 'Acknowledged',
             'waiting'      : 'Waiting On External',
             'feedback'     : 'Feedback Requested',
@@ -31,14 +91,16 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'node', 'tabview', '
                 user   : set_text(lookup(self.users)),
                 status : set_text(lookup(self.status)),
                 date   : 'date',
-                link   : function (cell, record, column, t) {
-                    var a = Y.Node.create('<a>'), data = record._oData;
-                    a.setAttribute('href', data.url);
-                    a.set('text', t);
+                link   : function (cell, record, column, text) {
+                    var a      = Y.Node.create('<a>'), 
+                        id     = record._oData.id;
+
+                    a.setAttribute('href', self.tickets[id].data.url);
+                    a.set('text', text);
                     Y.on('click', function (e) {
-                        var tab = self.open_tab(data)
-                        self.tabview.selectChild(tab.get('index'));
                         e.halt();
+                        var tab = self.open_tab(id);
+                        self.tabview.selectChild(tab.get('index'));
                     }, a);
                     Y.one(cell).append(a);
                 }
@@ -112,13 +174,21 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'node', 'tabview', '
             return source;
         },
         create: function (args) {
-            var self       = Y.Object(this);
-            self.tabs      = {};
-            self.users     = args.users;
+            var self     = Y.Object(this);
+            var tickets  = args.tickets;
+            self.users   = args.users;
+            self.tabs    = {};
+            self.tickets = {};
+
+            for (var i = 0; i < tickets.length; i += 1) {
+                var t = Ticket.create(self, tickets[i]);
+                self.tickets[t.data.id] = t;
+            }
+
             self.datatable = new YAHOO.widget.DataTable(
                 document.createElement('div'),
                 self.columns(), 
-                self.datasource(args.tickets)
+                self.datasource(tickets)
             );
 
             var node = Y.one(self.datatable.get('element'));
@@ -137,16 +207,18 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'node', 'tabview', '
             tab.remove();
         },
 
-        open_tab: function (data) {
-            var id = data.id, tab = this.tabs[id];
+        open_tab: function (id) {
+            var tab = this.tabs[id];
 
             if (tab) {
                 return tab;
             }
 
+            var template = Y.one('#template');
+
             tab = this.tabs[id] = new Y.Tab({
-                content : "foobaz",
-                label   : id.toString() 
+                panelNode : this.tickets[id].render(template),
+                label     : id.toString() 
             });
 
             var closer = Y.bind(this.close_tab, this, id);
@@ -178,7 +250,7 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'node', 'tabview', '
                 assigned_to : 'pdriver',
                 assigned_on : '2010-01-02 11:00',
                 assigned_by : 'vrby',
-                status      : 'pending',
+                status      : 'open',
                 last_reply  : '2010-04-22 12:00',
                 visibility  : 'public',
                 severity    : 'critical',
@@ -189,14 +261,16 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'node', 'tabview', '
                 comments    : [
                     {   timestamp  : '2010-01-02 09:53',
 
-                        author     : 'doug',
+                        author     : 'dbell',
                         body       : "my dog has no nose. It's a golden labrador and now he doesn't eat or play with the kids like used to. He doesn't smile or lick his lips or drink his soup with a straw or anything.  I've attached a picture of him. Please help.",
-                        attachment : {
-                            url  :  '/uploads/fd/fd76868768sfsf762/BobbyTables.jpg',
-                            name : 'Bobby Tables.jpg',
-                            size : 280000
-                        },
-                        status: 'pending'
+                        attachments : [
+                            {
+                                url  :  '/uploads/fd/fd76868768sfsf762/BobbyTables.jpg',
+                                name : 'Bobby Tables.jpg',
+                                size : 280000
+                            }
+                        ],
+                        status: 'open'
                     },
                     {   timestamp  : '2010-01-02 10:34',
                         author     : 'pdriver',
@@ -206,7 +280,7 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'node', 'tabview', '
                     {   timestamp  : '2010-01-02 11:01',
                         author     : 'dbell',
                         body       : 'Terrible.',
-                        status     : 'pending'
+                        status     : 'open'
                     }
                 ]
             }
