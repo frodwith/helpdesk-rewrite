@@ -1,69 +1,225 @@
-/*global YUI */
+/*global YUI, $p, _, document */
 
-YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node', 'tabview', 'event', function (Y) {
-    var YAHOO = Y.YUI2;
+_.mixin({
+    mapFn: function (map) {
+        return function (key) {
+            return map[key];
+        };
+    },
+    keyFn: function (key) {
+        return function (map) {
+            return map[key];
+        };
+    }
+});
 
-    var Ticket = {
-        render: function(template) {
-            var self = this;
-            template = Y.one(template).cloneNode(true);
-            template.removeAttribute('id');
+YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node', 'tabview', 'overlay', 'event', function (Y) {
 
-            var status = function (a) {
-                return self.helpdesk.status[a.item.status];
+    // Pure likes to work on in-dom objects, so this is a thin wrapper that
+    // takes an arbitrary Y.Node-able object as its template and returns us an
+    // out-of-dom Node.  The template node will not be altered.
+    function pure(template, data, directives) {
+        var container, rendered;
+
+        template = Y.one(template).cloneNode(true);
+        template.removeAttribute('id');
+
+        container = Y.Node.create('<div>');
+        container.append(template);
+
+        $p(Y.Node.getDOMNode(template)).render(data, directives);
+
+        rendered = container.get('children').item(0);
+        rendered.remove();
+
+        return rendered;
+    }
+
+    function lookup(map) {
+        return function(get) {
+            return function (a) {
+                return map[get(a)];
+            };
+        };
+    }
+
+    function aprop(name) {
+        return function (k) {
+            return function (a) {
+                return a[name][k];
+            }
+        }
+    }
+
+    function fillSelect(select, o) {
+        _.each(o, function (v, k) {
+            var opt = Y.Node.create('<option>');
+            opt.set('value', k);
+            opt.append(v);
+            select.append(opt);
+        });
+    }
+
+    var YAHOO = Y.YUI2,
+    item      = aprop('item'),
+    context   = aprop('context'),
+    mkButton  = function (thing) {
+        var node = Y.Node.getDOMNode(Y.one(thing)),
+        classes  = node.className,
+        widget   = new YAHOO.widget.Button(node);
+        widget.addClass(classes);
+        return widget;
+    },
+
+    Ticket    = {
+        editDirectives: {
+            '.keywords@value'   : 'keywords',
+            '.webgui@value'     : 'webgui',
+            '.wre@value'        : 'wre',
+            '.os@value'         : 'os'
+        },
+        viewDirectives: function () {
+            var h    = this.helpdesk,
+            username = lookup(h.users),
+            status   = lookup(h.status),
+            userUrl  = function (get) {
+                return function (a) {
+                    return 'http://a.url/users/' + get(a);
+                };
             };
 
-            var directives = {
+            return {
                 '.id'    : 'id',
                 '.title' : 'title',
                 '.comments' : {
                     'c<-comments' : {
                         '.timestamp'   : 'c.timestamp',
-                        '.author'      : function (a) {
-                            return self.helpdesk.users[a.item.author];
-                        },
-                        '.author@href' : function (a) {
-                            return "http://really.a.url/users/" + a.item.author;
-                        },
+                        '.author'      : username(item('author')),
+                        '.author@href' : userUrl(item('author')),
                         '@class+'      : function (a) {
                             return a.pos % 2 ? ' odd' : ' even';
                         },
                         '.body'        : 'c.body',
-                        '.status'      : status
+                        '.status'      : status(item('status'))
                     }
                 },
-                '.right-side .status' : status,
-                '.visibility' : function (a) {
-                    return a.context.visibility === 'public' ? 'Public' : 'Private';
-                },
+
+                '.right-side .status' : status(context('status')),
+
+                '.visibility' : lookup(h.visibility)(context('visibility')),
                 '.visibility@class+' : function (a) {
                     return ' ' + a.context.visibility;
                 },
+
+                '.severity'        : lookup(h.severity)(context('severity')),
+                '.keywords'        : 'keywords',
+                '.url'             : 'url',
+                '.webgui'          : 'webgui',
+                '.wre'             : 'wre',
+                '.os'              : 'os',
+                '.assignedTo'      : username(context('assignedTo')),
+                '.assignedTo@href' : userUrl(context('assignedTo')),
+                '.assignedOn'      : 'assignedOn',
+                '.assignedBy'      : username(context('assignedBy')),
+                '.assignedBy@href' : userUrl(context('assignedBy'))
+            };
+        },
+
+        reply: function () {
+            alert(this.node.one('textarea').get('value'));
+        },
+
+        edit: function () {
+            var data = this.data,
+            template = this.helpdesk.ticketEdit,
+            rendered = pure(template, data, this.editDirectives),
+            vinputs  = rendered.all('.visibility input'),
+            overlay, background, close;
+
+            close = function () {
+                overlay.destroy();
             };
 
-            // pure assumes a parent node
-            var container = Y.Node.create('<div>');
-            container.append(template);
-            $p(Y.Node.getDOMNode(template)).render(this.data, directives);
+            _.detect(Y.NodeList.getDOMNodes(vinputs), function (radio) {
+                return radio.value === data.visibility;
+            }).checked = true;
 
-            var rendered = container.get('children').item(0);
-            rendered.remove();
+            rendered.one('.severity').set('value', data.severity);
+            rendered.one('.assignedTo').set('value', data.assignedTo);
+            rendered.one('.cancel').on('click', close);
 
-            Y.on('click', function () {
-                alert('edit dialog');
-            }, rendered.one('.edit-button'));
+            mkButton(rendered.one('.close')).on('click', close);
+            mkButton(rendered.one('.cancel')).on('click', close);
 
-            return rendered;
+            mkButton(rendered.one('.save')).on('click', 
+                _.bind(this.editSave, this, rendered, close));
+            
+            overlay = new Y.Overlay({
+                srcNode   : rendered,
+                zIndex    : 2,
+                centered  : true,
+            });
+            overlay.plug(Y.Plugin.OverlayModal).render();
         },
+
+        editSave: function (editor, cb) {
+            var self = this,
+            data     = _.clone(this.data),
+            radios   = editor.one('.visibility').all('input');
+
+            data.visibility =
+            _.detect(Y.NodeList.getDOMNodes(radios), function (r) {
+                return r.checked;
+            }).value;
+
+            _.each(['severity', 'keywords', 'assignedTo', 
+            'webgui', 'wre', 'os'], function(k) {
+                data[k] = editor.one('.' + k).get('value');
+            });
+
+            this.helpdesk.saveTicket(data, function (data) {
+                self.update(data);
+                cb();
+            });
+        },
+
+        update: function(data) {
+            var stale, fresh;
+            this.data = data;
+
+            stale = this.node.one('.ticket');
+            fresh = this.render().one('.ticket');
+            
+            stale.replace(fresh);
+        },
+
+        render: function () {
+            var template = this.helpdesk.ticketView,
+            r            = pure(template, this.data, this.viewDirectives()),
+            node         = this.node = Y.Node.create('<div>')
+                .addClass('yui3-tab-panel')
+                .append(r);
+
+            mkButton(node.one('.edit-button'))
+                .on('click', _.bind(this.edit, this));
+
+            mkButton(node.one('.reply'))
+                .on('click', _.bind(this.reply, this));
+
+            fillSelect(node.one('.new-status'), this.helpdesk.status);
+
+            return this.node;
+        },
+
         create: function (helpdesk, data) {
             var self      = Y.Object(this);
             self.helpdesk = helpdesk;
             self.data     = data;
             return self;
         }
-    };
+    },
 
-    var Helpdesk = {
+    Helpdesk = {
         status: {
             'open'         : 'Open',
             'acknowledged' : 'Acknowledged',
@@ -73,35 +229,48 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
             'resolved'     : 'Resolved'
         },
 
-        columns: function () {
-            function lookup(map) {
-                return function(key) {
-                    return map[key];
-                };
-            }
+        visibility: {
+            'public'  : 'Public',
+            'private' : 'Private'
+        },
 
-            function set_text(fn) {
+        severity: {
+            'fatal'    : 'Fatal',
+            'critical' : 'Critical',
+            'minor'    : 'Minor',
+            'cosmetic' : 'Cosmetic'
+        },
+
+        saveTicket: function (t, cb) {
+            cb(t);
+        },
+
+        columns: function () {
+            function setText(fn) {
                 return function (cell, record, column, data) {
                     Y.one(cell).set('text', fn(data));
                 };
             }
 
-            var self = this;
-            var fmt = {
-                user   : set_text(lookup(self.users)),
-                status : set_text(lookup(self.status)),
+            var self = this,
+            fmt = {
+                user   : setText(_.mapFn(self.users)),
+                status : setText(_.mapFn(self.status)),
                 date   : 'date',
                 link   : function (cell, record, column, text) {
                     var a      = Y.Node.create('<a>'), 
-                        id     = record._oData.id;
+                    id         = record._oData.id;
 
                     a.setAttribute('href', self.tickets[id].data.url);
                     a.set('text', text);
+
                     Y.on('click', function (e) {
+                        var tab;
                         e.halt();
-                        var tab = self.open_tab(id);
+                        tab = self.openTab(id);
                         self.tabview.selectChild(tab.get('index'));
                     }, a);
+
                     Y.one(cell).append(a);
                 }
             };
@@ -117,17 +286,17 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
                     sortable  : true,
                     formatter : fmt.link
                 },
-                {   key       : 'opened_by',
+                {   key       : 'openedBy',
                     label     : 'Opened By',
                     sortable  : true,
                     formatter : fmt.user
                 },
-                {   key       : 'opened_on',
+                {   key       : 'openedOn',
                     label     : 'Opened On',
                     sortable  : true,
                     formatter : fmt.date
                 },
-                {   key       : 'assigned_to',
+                {   key       : 'assignedTo',
                     label     : 'Assigned To',
                     sortable  : true,
                     formatter : fmt.user
@@ -137,14 +306,32 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
                     sortable  : true,
                     formatter : fmt.status
                 },
-                {   key       : 'last_reply',
+                {   key       : 'lastReply',
                     label     : 'Last Reply',
                     sortable  : true,
                     formatter : fmt.date
                 }
             ];
         },
+        fixupEditTemplate: function () {
+            var template = Y.one(this.ticketEdit),
+            visibility   = template.one('.visibility');
+
+            _.each(this.visibility, function (v, k) {
+                var label = Y.Node.create('<label>'),
+                radio = Y.Node.create('<input type="radio">');
+                radio.set('value', k);
+                radio.set('name', 'visibility');
+                label.append(radio);
+                label.append(v);
+                visibility.append(label);
+            });
+            
+            fillSelect(template.one('.severity'), this.severity);
+            fillSelect(template.one('.assignedTo'), this.users);
+        },
         render: function () {
+            this.fixupEditTemplate();
             this.tabview.render();
         },
         datasource: function (tickets) {
@@ -152,7 +339,7 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
                 try { 
                     return Date.parse(str);
                 }
-                catch(e) { 
+                catch (e) { 
                     return false;
                 }
             }
@@ -164,26 +351,32 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
                     { key: 'id',          parser: 'number'  },
                     { key: 'url',         parser: 'string'  },
                     { key: 'title',       parser: 'string'  },
-                    { key: 'opened_by',   parser: 'string'  },
-                    { key: 'opened_on',   parser: parseDate },
-                    { key: 'assigned_to', parser: 'string'  },
+                    { key: 'openedBy',   parser: 'string'  },
+                    { key: 'openedOn',   parser: parseDate },
+                    { key: 'assignedTo', parser: 'string'  },
                     { key: 'status',      parser: 'string'  },
-                    { key: 'last_reply',  parser: parseDate }
+                    { key: 'lastReply',  parser: parseDate }
                 ]
             };
             return source;
         },
         create: function (args) {
-            var self     = Y.Object(this);
-            var tickets  = args.tickets;
+            var self = Y.Object(this),
+            tickets  = args.tickets,
+            node;
+
+            _.each(['ticketView', 'ticketEdit', 'users'], function (k) {
+                self[k] = args[k];
+            });
             self.users   = args.users;
             self.tabs    = {};
             self.tickets = {};
 
-            for (var i = 0; i < tickets.length; i += 1) {
-                var t = Ticket.create(self, tickets[i]);
-                self.tickets[t.data.id] = t;
-            }
+            _(tickets).chain()
+                .map(_.bind(Ticket.create, Ticket, self))
+                .each(function (t) {
+                    self.tickets[t.data.id] = t;
+                });
 
             self.datatable = new YAHOO.widget.DataTable(
                 document.createElement('div'),
@@ -191,7 +384,7 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
                 self.datasource(tickets)
             );
 
-            var node = Y.one(self.datatable.get('element'));
+            node = Y.one(self.datatable.get('element'));
             node.addClass('yui3-tab-panel');
 
             self.tabview = new Y.TabView({
@@ -201,27 +394,26 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
             return self;
         },
 
-        close_tab: function(id) {
+        closeTab: function (id) {
             var tab = this.tabs[id];
             delete this.tabs[id];
             tab.remove();
         },
 
-        open_tab: function (id) {
-            var tab = this.tabs[id];
+        openTab: function (id) {
+            var tab = this.tabs[id],
+            template, closer;
 
             if (tab) {
                 return tab;
             }
 
-            var template = Y.one('#template');
-
             tab = this.tabs[id] = new Y.Tab({
-                panelNode : this.tickets[id].render(template),
+                panelNode : this.tickets[id].render(),
                 label     : id.toString() 
             });
 
-            var closer = Y.bind(this.close_tab, this, id);
+            closer = _.bind(this.closeTab, this, id);
             tab.after('render', function () {
                 var a = Y.Node.create('<a> x</a>');
                 Y.on('click', closer, a);
@@ -231,9 +423,10 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
             this.tabview.add(tab);
             return tab;
         }
-    };
-
-    var helpdesk = Helpdesk.create({
+    },
+    helpdesk = Helpdesk.create({
+        ticketView: '#ticket-view-template',
+        ticketEdit: '#ticket-edit-template',
         users: {
             'pdriver'  : 'Paul Driver',
             'dbell'    : 'Doug Bell',
@@ -242,27 +435,28 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
             'vrby'     : 'Jamie Vrbsky'
         },
         tickets: [
-            {   id          : '12049',
-                url         : 'http://the.real.url/no_for_real/12049',
-                title       : 'My dog has no nose',
-                opened_by   : 'dbell',
-                opened_on   : '2010-01-02 09:53',
-                assigned_to : 'pdriver',
-                assigned_on : '2010-01-02 11:00',
-                assigned_by : 'vrby',
-                status      : 'open',
-                last_reply  : '2010-04-22 12:00',
-                visibility  : 'public',
-                severity    : 'critical',
-                keywords    : 'squad, tell the, joke',
-                webgui      : '7.7.29',
-                wre         : '0.9.3',
-                os          : 'Beige Pants',
-                comments    : [
-                    {   timestamp  : '2010-01-02 09:53',
-
+            {   
+                id         : '12049',
+                url        : 'http://the.real.url/no_for_real/12049',
+                title      : 'My dog has no nose',
+                openedBy   : 'dbell',
+                openedOn   : '2010-01-02 09:53',
+                assignedTo : 'pdriver',
+                assignedOn : '2010-01-02 11:00',
+                assignedBy : 'vrby',
+                status     : 'open',
+                lastReply  : '2010-04-22 12:00',
+                visibility : 'public',
+                severity   : 'critical',
+                keywords   : 'squad, tell the, joke',
+                webgui     : '7.7.29',
+                wre        : '0.9.3',
+                os         : 'Beige Pants',
+                comments   : [
+                    {   
+                        timestamp  : '2010-01-02 09:53',
                         author     : 'dbell',
-                        body       : "my dog has no nose. It's a golden labrador and now he doesn't eat or play with the kids like used to. He doesn't smile or lick his lips or drink his soup with a straw or anything.  I've attached a picture of him. Please help.",
+                        body       : "my dog has no nose. It's a golden labrador and now he doesn't eat or play with the kids like he used to. He doesn't smile or lick his lips or drink his soup with a straw or anything.  I've attached a picture of him. Please help.",
                         attachments : [
                             {
                                 url  :  '/uploads/fd/fd76868768sfsf762/BobbyTables.jpg',
@@ -272,12 +466,14 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
                         ],
                         status: 'open'
                     },
-                    {   timestamp  : '2010-01-02 10:34',
+                    {   
+                        timestamp  : '2010-01-02 10:34',
                         author     : 'pdriver',
                         body       : 'how does he smell?',
                         status     : 'feedback'
                     },
-                    {   timestamp  : '2010-01-02 11:01',
+                    {   
+                        timestamp  : '2010-01-02 11:01',
                         author     : 'dbell',
                         body       : 'Terrible.',
                         status     : 'open'
@@ -287,5 +483,5 @@ YUI({filter: 'raw'}).use('yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node
         ]
     });
 
-    Y.on('available', Y.bind(Helpdesk.render, helpdesk), '#container');
+    Y.on('domready', _.bind(Helpdesk.render, helpdesk));
 });

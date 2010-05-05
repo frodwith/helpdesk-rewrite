@@ -2,45 +2,136 @@
     <head>
         <title>Helpdesk Demo</title>
         <link rel='stylesheet' href='http://yui.yahooapis.com/combo?3.1.0/build/cssreset/reset-min.css&3.1.0/build/cssfonts/fonts-min.css&3.1.0/build/cssbase/base-min.css'> 
-		<link rel='stylesheet' href='style.css'>
+        <link rel='stylesheet' href='style.css'>
         <script src='http://yui.yahooapis.com/combo?3.1.0/build/yui/yui-min.js'></script>
         <script src='date.js'></script>
-		<script src='pure.js'></script>
+        <script src='pure.js'></script>
+        <script src='underscore.js'></script>
         <script src='script.js'></script>
     </head>
     <body class='yui-skin-sam yui3-skin-sam'>
-        <div id='container'>
+        <div id='ticket-edit-template' class='ticket-edit'>
+            <div class='yui-widget-hd'>
+                <h1>Edit Ticket</h1>
+                <a class='close'>x</a>
+            </div>
+            <table class='yui-widget-bd'>
+                <tr>
+                    <td class='label'>Visibility:</td>
+                    <td class='visibility'></td>
+                </tr>
+                <tr>
+                    <td class='label'>Severity:</td>
+                    <td><select class='severity'></select></td>
+                </tr>
+                <tr>
+                    <td class='label'>Keywords:</td>
+                    <td><input class='keywords' type='text' /><br />
+                        Separated with commas
+                    </td>
+                </tr>
+                <tr>
+                    <td class='label'>Assigned To:</td>
+                    <td><select class='assignedTo'></select></td>
+                </tr>
+                <tr>
+                    <td class='label'>WebGUI Version:</td>
+                    <td><input class='webgui' type='text' /></td>
+                </tr>
+                <tr>
+                    <td class='label'>WRE Version:</td>
+                    <td><input class='wre' type='text' /></td>
+                </tr>
+                <tr>
+                    <td class='label'>OS:</td>
+                    <td><input class='os' type='text' /></td>
+                </tr>
+            </table>
+            <div class='yui-widget-ft'>
+                <button class='save'>Save</button>
+                <button class='cancel'>Cancel</button>
+                <div class='footer'></div>
+            </div>
         </div>
-		<div id='template' class='ticket'>
-			<div class='left-side'>
-				<h1>
-					[<span class='id'></span>]
-					<span class='title'></span>
-				</h1>
-				<ul class='comments'>
-					<li>
-						<div class='header'>
-							<span class='timestamp'></span>
-							<a class='author'></a>
-						</div>
-						<div class='body'></div>
-						<div class='status-change'>
-							&mdash; Status changed to 
-							"<span class='status'></span>"
-						</div>
-					</li>
-				</ul>
-			</div>
-			<div class='right-side'>
-				<div class='status'></div>
-				<div class='edit-button'>
-					<img src='icons/pencil.png' />
-					Edit Ticket
-				</div>
-				<div class='footer'></div>
-				<div class='visibility'></div>
-			</div>
-			<div class='footer'></div>
-		</div>
+        <div id='ticket-view-template' class='ticket'>
+            <div class='left-side'>
+                <h1>
+                    [<span class='id'></span>]
+                    <span class='title'></span>
+                </h1>
+                <ul class='comments'>
+                    <li>
+                        <div class='header'>
+                            <span class='timestamp'></span>
+                            <a class='author'></a>
+                        </div>
+                        <div class='body'></div>
+                        <div class='status-change'>
+                            &mdash; Status changed to 
+                            "<span class='status'></span>"
+                        </div>
+                    </li>
+                </ul>
+                <form class='new-comment'>
+                    <textarea name='comment'></textarea>
+                    <table>
+                        <tr>
+                            <td class='name'>New Status:</td>
+                            <td><select name='status'></td>
+                        </tr>
+                        <tr>
+                            <td class='name'>Add Attachment:</td>
+                            <td><input name='attachment' type='file' /></td>
+                        </tr>
+                    </table>
+                    <button class='reply'>Reply</button>
+                </form>
+            </div>
+            <div class='right-side'>
+                <div class='status'></div>
+                <button class='edit-button'>
+                    Edit Ticket
+                </button>
+                <div class='footer'></div>
+                <div class='visibility'></div>
+                <div class='info'>
+                    <div class='name'>Severity</div>
+                    <div class='value severity'></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>Keywords</div>
+                    <div class='value keywords'></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>URL</div>
+                    <div class='value url'></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>WebGUI Version</div>
+                    <div class='value webgui'></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>WRE Version</div>
+                    <div class='value wre'></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>OS</div>
+                    <div class='value os'></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>Assigned To</div>
+                    <div class='value'><a class='assignedTo'></a></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>Assigned On</div>
+                    <div class='value assignedOn'></div>
+                </div>
+                <div class='info'>
+                    <div class='name'>Assigned By</div>
+                    <div class='value'><a class='assignedBy'></a></div>
+                </div>
+            </div>
+            <div class='footer'></div>
+        </div>
     </body>
 </html>
