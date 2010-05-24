@@ -126,7 +126,10 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
         },
 
         reply: function () {
-            alert(this.node.one('textarea').get('value'));
+            this.helpdesk.addComment(
+                this.data.id, this.node.one('.new-comment'),
+                _.bind(this.update, this)
+            );
         },
 
         edit: function () {
@@ -184,13 +187,14 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
         },
 
         update: function(data) {
-            var stale, fresh;
+            var stale, fresh, node = this.node;
             this.data = data;
 
-            stale = this.node.one('.ticket');
+            stale = node.one('.ticket');
             fresh = this.render().one('.ticket');
-            
             stale.replace(fresh);
+
+            this.node = node;
         },
 
         render: function () {
@@ -206,7 +210,7 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
             mkButton(node.one('.reply'))
                 .on('click', _.bind(this.reply, this));
 
-            fillSelect(node.one('.new-status'), this.helpdesk.status);
+            fillSelect(node.one('[name=status]'), this.helpdesk.status);
 
             return this.node;
         },
@@ -239,6 +243,18 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
             'critical' : 'Critical',
             'minor'    : 'Minor',
             'cosmetic' : 'Cosmetic'
+        },
+
+        addComment: function (id, comment, cb) {
+            var fake = _.clone(this.tickets[id].data),
+            c  = {   
+                timestamp  : Date.now().toString('yyyy-MM-dd HH:mm'),
+                author     : 'dbell',
+                body       : comment.get('comment').get('value'),
+                status     : comment.get('status').get('value')
+            };
+            fake.comments.push(c);
+            cb(fake);
         },
 
         saveTicket: function (t, cb) {
