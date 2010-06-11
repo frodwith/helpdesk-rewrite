@@ -16,7 +16,7 @@ _.mixin({
 YUI({filter: 'raw'}).use(
 'yui2-dragdrop', 'yui2-connection', 'yui2-json', 'yui2-paginator', 
 'yui2-datatable', 'yui2-button', 
-'node', 'tabview', 'gallery-overlay-modal', 'overlay', 'event', 
+'history', 'node', 'tabview', 'gallery-overlay-modal', 'overlay', 'event', 
 'querystring-stringify-simple', 'io-upload-iframe', 'io', 'json', function (Y) {
 
     // Pure likes to work on in-dom objects, so this is a thin wrapper that
@@ -196,9 +196,7 @@ YUI({filter: 'raw'}).use(
             var self     = this,
             template     = self.helpdesk.ticketView,
             r            = pure(template, self.data, self.viewDirectives()),
-            node         = self.node = Y.Node.create('<div>')
-                .addClass('yui3-tab-panel')
-                .append(r);
+            node         = self.node = Y.Node.create('<div>').append(r);
 
             mkButton(node.one('.edit-button')) .on('click', function () {
                 self.edit(function (form, done) {
@@ -261,6 +259,45 @@ YUI({filter: 'raw'}).use(
             'cosmetic' : 'Cosmetic'
         },
 
+        getState: function () {
+            var selection = this.tabview.get('selection'),
+            tickets      = _(this.tabs).chain().values().sortBy(function (t) {
+                return t.get('index');
+            }).map(function (t) {
+                return t.get('label');
+            }).value(),
+            label = selection && 
+                selection.get('index') && 
+                selection.get('label');
+
+            return Y.JSON.stringify({
+                open    : label || null, 
+                tickets : tickets
+            });
+        },
+
+        updateFromState: function (state) {
+            var self      = this,
+            currentlyOpen = _.clone(self.tabs);
+
+            state = Y.JSON.parse(state);
+            _.each(state.tickets, function (id) {
+                if (id in currentlyOpen) {
+                    delete currentlyOpen[id];
+                }
+                else {
+                    self.openTab(id);
+                }
+            });
+            _(currentlyOpen).chain().keys().each(_.bind(self.closeTab, self));
+            if (state.open) {
+                self.select(self.tabs[state.open]);
+            }
+            else {
+                self.select(self.mainTab);
+            }
+        },
+
         addComment: function (id, comment, callback) {
             Y.io('tickets/' + id + '/comment', {
                 method: 'POST',
@@ -285,7 +322,7 @@ YUI({filter: 'raw'}).use(
                     complete: function (i, r) {
                         var id = r.responseText;
                         self.refresh();
-                        self.openTab(id);
+                        self.openTab(id, true);
                         callback(id);
                     }
                 }
@@ -331,7 +368,7 @@ YUI({filter: 'raw'}).use(
 
                     Y.on('click', function (e) {
                         e.halt();
-                        self.openTab(id);
+                        self.openTab(id, true);
                     }, a);
 
                     Y.one(cell).append(a);
@@ -470,11 +507,15 @@ YUI({filter: 'raw'}).use(
             self.tabs       = {};
             self.datasource = self.buildDatasource(args.datasource);
             self.columns    = self.buildColumns();
+            self.mainTab    = new Y.Tab({
+                label: 'Tickets', 
+                panelNode: Y.one('#main-tab')
+            });
 
-            self.tabview = new Y.TabView({
-                children: [ 
-                    { label: 'Tickets', panelNode: Y.one('#main-tab') } 
-                ]
+            self.tabview = new Y.TabView({ children: [ self.mainTab ] });
+
+            self.tabview.after('selectionChange', function () {
+                Y.History.navigate('helpdesk', self.getState());
             });
 
             return self;
@@ -492,32 +533,31 @@ YUI({filter: 'raw'}).use(
             });
         },
 
-        openTab: function (id) {
+        openTab: function (id, select) {
             var self = this,
             tab = self.tabs[id],
             template, closer, self;
 
-            if (tab) {
-                self.select(tab);
-                return tab;
-            }
-
-            self.getTicket(id, function (data) {
+            if (!tab) {
                 tab = self.tabs[id] = new Y.Tab({
-                    panelNode : Ticket.create(self, data).render(),
-                    label     : id.toString() 
+                    content   : 'Loading...',
+                    label     : id.toString()
                 });
-
                 closer = _.bind(self.closeTab, self, id);
                 tab.after('render', function () {
                     var a = Y.Node.create('<a> x</a>');
                     Y.on('click', closer, a);
                     tab.get('boundingBox').one('a').append(a);
                 });
-
                 self.tabview.add(tab);
+                self.getTicket(id, function (data) {
+                    var content = Ticket.create(self, data).render();
+                    tab.get('panelNode').setContent(content);
+                });
+            }
+            if (select) {
                 self.select(tab);
-            });
+            }
         }
     },
     helpdesk = Helpdesk.create({
@@ -533,5 +573,20 @@ YUI({filter: 'raw'}).use(
         datasource: 'datasource?'
     });
 
-    Y.on('domready', _.bind(Helpdesk.render, helpdesk));
+
+    Y.on('domready', function () {
+        var initial = Y.History.getBookmarkedState('helpdesk'),
+        update      = _.bind(helpdesk.updateFromState, helpdesk);
+
+        if (initial) {
+            update(initial);
+        }
+        else {
+            initial =  '{open: null, tickets: []}';
+        }
+        Y.History.register('helpdesk', initial)
+            .on('history:moduleStateChange', update)
+        Y.History.initialize('#yui-history-field', '#yui-history-iframe');
+        Y.History.on('history:ready', _.bind(helpdesk.render, helpdesk));
+    });
 });

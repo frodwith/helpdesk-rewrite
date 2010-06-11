@@ -1,7 +1,9 @@
 body                     { width: 1024px }
 
+#yui-history-iframe,
 #ticket-view-template,
 #ticket-edit-template    { display: none }
+
 .ticket                  { background-color: white; float: left: width: 100% }
 
 .comments li             { list-style-type: none }
