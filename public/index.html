@@ -10,41 +10,55 @@
         <script src='script.js'></script>
     </head>
     <body class='yui-skin-sam yui3-skin-sam'>
-        <div id='ticket-edit-template' class='ticket-edit'>
+        <div id='main-tab' class='yui3-tab-panel'>
+            <div>
+                <button id='new-ticket'>Open New Ticket</button>
+                <button id='subscribe'>Subscribe</button>
+                <button id='filter'>Filter Tickets</button>
+                <div class='footer'>
+            </div>
+            <div id='datatable'>
+            </div>
+        </div>
+        <form id='ticket-edit-template' class='ticket-edit'>
             <div class='yui-widget-hd'>
                 <h1>Edit Ticket</h1>
                 <a class='close'>x</a>
             </div>
             <table class='yui-widget-bd'>
                 <tr>
+                    <td class='label'>Title:</td>
+                    <td><input name='title' type='text' /></td>
+                </tr>
+                <tr>
                     <td class='label'>Visibility:</td>
                     <td class='visibility'></td>
                 </tr>
                 <tr>
                     <td class='label'>Severity:</td>
-                    <td><select class='severity'></select></td>
+                    <td><select name='severity'></select></td>
                 </tr>
                 <tr>
                     <td class='label'>Keywords:</td>
-                    <td><input class='keywords' type='text' /><br />
+                    <td><input name='keywords' type='text' /><br />
                         Separated with commas
                     </td>
                 </tr>
                 <tr>
                     <td class='label'>Assigned To:</td>
-                    <td><select class='assignedTo'></select></td>
+                    <td><select name='assignedTo'></select></td>
                 </tr>
                 <tr>
                     <td class='label'>WebGUI Version:</td>
-                    <td><input class='webgui' type='text' /></td>
+                    <td><input name='webgui' type='text' /></td>
                 </tr>
                 <tr>
                     <td class='label'>WRE Version:</td>
-                    <td><input class='wre' type='text' /></td>
+                    <td><input name='wre' type='text' /></td>
                 </tr>
                 <tr>
                     <td class='label'>OS:</td>
-                    <td><input class='os' type='text' /></td>
+                    <td><input name='os' type='text' /></td>
                 </tr>
             </table>
             <div class='yui-widget-ft'>
@@ -52,7 +66,7 @@
                 <button class='cancel'>Cancel</button>
                 <div class='footer'></div>
             </div>
-        </div>
+        </form>
         <div id='ticket-view-template' class='ticket'>
             <div class='left-side'>
                 <h1>
@@ -70,10 +84,13 @@
                             &mdash; Status changed to 
                             "<span class='status'></span>"
                         </div>
+                        <ul class='attachments'>
+                            <li><a></a></li>
+                        </ul>
                     </li>
                 </ul>
                 <form class='new-comment'>
-                    <textarea name='comment'></textarea>
+                    <textarea name='body'></textarea>
                     <table>
                         <tr>
                             <td class='name'>New Status:</td>
@@ -81,7 +98,11 @@
                         </tr>
                         <tr>
                             <td class='name'>Add Attachment:</td>
-                            <td><input name='attachment' type='file' /></td>
+                            <td>
+                                <div class='attach-box'>
+                                    <input name='attachment' type='file' />
+                                </div>
+                            </td>
                         </tr>
                     </table>
                     <button class='reply'>Reply</button>

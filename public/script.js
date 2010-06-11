@@ -13,7 +13,11 @@ _.mixin({
     }
 });
 
-YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatable', 'yui2-button', 'node', 'tabview', 'overlay', 'event', function (Y) {
+YUI({filter: 'raw'}).use(
+'yui2-dragdrop', 'yui2-connection', 'yui2-json', 'yui2-paginator', 
+'yui2-datatable', 'yui2-button', 
+'node', 'tabview', 'gallery-overlay-modal', 'overlay', 'event', 
+'querystring-stringify-simple', 'io-upload-iframe', 'io', 'json', function (Y) {
 
     // Pure likes to work on in-dom objects, so this is a thin wrapper that
     // takes an arbitrary Y.Node-able object as its template and returns us an
@@ -38,7 +42,7 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
     function lookup(map) {
         return function(get) {
             return function (a) {
-                return map[get(a)];
+                return map[get(a)] || '';
             };
         };
     }
@@ -60,6 +64,14 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
         });
     }
 
+    function ticketResponse(callback) {
+        return function (id, r) {
+            var ticket = Y.JSON.parse(r.responseText);
+            callback(ticket);
+        };
+    }
+
+
     var YAHOO = Y.YUI2,
     item      = aprop('item'),
     context   = aprop('context'),
@@ -73,10 +85,11 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
 
     Ticket    = {
         editDirectives: {
-            '.keywords@value'   : 'keywords',
-            '.webgui@value'     : 'webgui',
-            '.wre@value'        : 'wre',
-            '.os@value'         : 'os'
+            '[name=title]@value'      : 'title',
+            '[name=keywords]@value'   : 'keywords',
+            '[name=webgui]@value'     : 'webgui',
+            '[name=wre]@value'        : 'wre',
+            '[name=os]@value'         : 'os'
         },
         viewDirectives: function () {
             var h    = this.helpdesk,
@@ -100,7 +113,13 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
                             return a.pos % 2 ? ' odd' : ' even';
                         },
                         '.body'        : 'c.body',
-                        '.status'      : status(item('status'))
+                        '.status'      : status(item('status')),
+                        '.attachments' : {
+                            'a<-c.attachments' : {
+                                'li a@href' : 'a.url',
+                                'li a'      : 'a.name'
+                            }
+                        }
                     }
                 },
 
@@ -132,58 +151,34 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
             );
         },
 
-        edit: function () {
-            var data = this.data,
-            template = this.helpdesk.ticketEdit,
-            rendered = pure(template, data, this.editDirectives),
-            vinputs  = rendered.all('.visibility input'),
-            overlay, background, close;
-
-            close = function () {
-                overlay.destroy();
-            };
+        edit: function (save) {
+            var self = this,
+            data     = self.data,
+            helpdesk = self.helpdesk,
+            template = helpdesk.ticketEdit,
+            form     = pure(template, data, self.editDirectives),
+            vinputs  = form.all('.visibility input'),
+            overlay  = new Y.Overlay({
+                srcNode   : form,
+                zIndex    : 2,
+                centered  : true
+            }).plug(Y.Plugin.OverlayModal),
+            close    = _.bind(overlay.destroy, overlay);
 
             _.detect(Y.NodeList.getDOMNodes(vinputs), function (radio) {
                 return radio.value === data.visibility;
             }).checked = true;
 
-            rendered.one('.severity').set('value', data.severity);
-            rendered.one('.assignedTo').set('value', data.assignedTo);
-            rendered.one('.cancel').on('click', close);
+            form.one('[name=severity]').set('value', data.severity);
+            form.one('[name=assignedTo]').set('value', data.assignedTo);
 
-            mkButton(rendered.one('.close')).on('click', close);
-            mkButton(rendered.one('.cancel')).on('click', close);
+            mkButton(form.one('.close')).on('click', close);
+            mkButton(form.one('.cancel')).on('click', close);
 
-            mkButton(rendered.one('.save')).on('click', 
-                _.bind(this.editSave, this, rendered, close));
+            mkButton(form.one('.save'))
+                .on('click', _.bind(save, null, form, close))
             
-            overlay = new Y.Overlay({
-                srcNode   : rendered,
-                zIndex    : 2,
-                centered  : true,
-            });
-            overlay.plug(Y.Plugin.OverlayModal).render();
-        },
-
-        editSave: function (editor, cb) {
-            var self = this,
-            data     = _.clone(this.data),
-            radios   = editor.one('.visibility').all('input');
-
-            data.visibility =
-            _.detect(Y.NodeList.getDOMNodes(radios), function (r) {
-                return r.checked;
-            }).value;
-
-            _.each(['severity', 'keywords', 'assignedTo', 
-            'webgui', 'wre', 'os'], function(k) {
-                data[k] = editor.one('.' + k).get('value');
-            });
-
-            this.helpdesk.saveTicket(data, function (data) {
-                self.update(data);
-                cb();
-            });
+            overlay.render();
         },
 
         update: function(data) {
@@ -198,21 +193,42 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
         },
 
         render: function () {
-            var template = this.helpdesk.ticketView,
-            r            = pure(template, this.data, this.viewDirectives()),
-            node         = this.node = Y.Node.create('<div>')
+            var self     = this,
+            template     = self.helpdesk.ticketView,
+            r            = pure(template, self.data, self.viewDirectives()),
+            node         = self.node = Y.Node.create('<div>')
                 .addClass('yui3-tab-panel')
                 .append(r);
 
-            mkButton(node.one('.edit-button'))
-                .on('click', _.bind(this.edit, this));
+            mkButton(node.one('.edit-button')) .on('click', function () {
+                self.edit(function (form, done) {
+                    helpdesk.saveTicket(self.data.id, form, function (ticket) {
+                        self.update(ticket);
+                        done();
+                    });
+                });
+            });
 
             mkButton(node.one('.reply'))
-                .on('click', _.bind(this.reply, this));
+                .on('click', _.bind(self.reply, self));
 
-            fillSelect(node.one('[name=status]'), this.helpdesk.status);
+            function makeAttacher(node) {
+                var handle = node.one('input').on('change', function (e) {
+                    var box = this.get('parentNode'),
+                    next    = box.cloneNode(true),
+                    remover = Y.Node.create('<a>x</a>');
+                    handle.detach();
+                    box.appendChild(remover);
+                    box.get('parentNode').appendChild(next);
+                    makeAttacher(next);
+                    mkButton(remover).on('click', _.bind(box.remove, box));
+                });
+            }
+            makeAttacher(node.one('.attach-box'));
 
-            return this.node;
+            fillSelect(node.one('[name=status]'), self.helpdesk.status);
+
+            return node;
         },
 
         create: function (helpdesk, data) {
@@ -245,26 +261,58 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
             'cosmetic' : 'Cosmetic'
         },
 
-        addComment: function (id, comment, cb) {
-            var fake = _.clone(this.tickets[id].data),
-            c  = {   
-                timestamp  : Date.now().toString('yyyy-MM-dd HH:mm'),
-                author     : 'dbell',
-                body       : comment.get('comment').get('value'),
-                status     : comment.get('status').get('value')
-            };
-            fake.comments.push(c);
-            cb(fake);
+        addComment: function (id, comment, callback) {
+            Y.io('tickets/' + id + '/comment', {
+                method: 'POST',
+                form: { 
+                    id     : comment,
+                    upload : true,
+                },
+                on: { complete: _.bind(this.getTicket, this, id, callback) }
+            });
         },
 
-        saveTicket: function (t, cb) {
-            cb(t);
+        select: function (tab) {
+            this.tabview.selectChild(tab.get('index'));
         },
 
-        columns: function () {
-            function setText(fn) {
+        createTicket: function (form, callback) {
+            var self = this;
+            Y.io('tickets/new', {
+                method: 'POST',
+                form: { id: form },
+                on: { 
+                    complete: function (i, r) {
+                        var id = r.responseText;
+                        self.refresh();
+                        self.openTab(id);
+                        callback(id);
+                    }
+                }
+            });
+        },
+
+        saveTicket: function (id, form, callback) {
+            var self = this;
+            Y.io('tickets/' + id, {
+                method: 'POST',
+                form: { id: form },
+                on: { 
+                    complete: function () {
+                        self.refresh();
+                        self.getTicket(id, callback);
+                    }
+                }
+            });
+        },
+
+        buildColumns: function () {
+            function setText(fn, def) {
+                if (!def) {
+                    def = '';
+                }
                 return function (cell, record, column, data) {
-                    Y.one(cell).set('text', fn(data));
+                    Y.one(cell).set('text', fn(data) || def);
                 };
             }
 
@@ -275,16 +323,15 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
                 date   : 'date',
                 link   : function (cell, record, column, text) {
                     var a      = Y.Node.create('<a>'), 
-                    id         = record._oData.id;
+                    data       = record._oData,
+                    id         = data.id;
 
-                    a.setAttribute('href', self.tickets[id].data.url);
+                    a.setAttribute('href', data.url);
                     a.set('text', text);
 
                     Y.on('click', function (e) {
-                        var tab;
                         e.halt();
-                        tab = self.openTab(id);
-                        self.tabview.selectChild(tab.get('index'));
+                        self.openTab(id);
                     }, a);
 
                     Y.one(cell).append(a);
@@ -315,7 +362,7 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
                 {   key       : 'assignedTo',
                     label     : 'Assigned To',
                     sortable  : true,
-                    formatter : fmt.user
+                    formatter : setText(_.mapFn(self.users), 'unassigned'),
                 },
                 {   key       : 'status',
                     label     : 'Status',
@@ -343,14 +390,49 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
                 visibility.append(label);
             });
             
-            fillSelect(template.one('.severity'), this.severity);
-            fillSelect(template.one('.assignedTo'), this.users);
+            fillSelect(template.one('[name=severity]'), this.severity);
+            fillSelect(template.one('[name=assignedTo]'), this.users);
+        },
+        refresh: function () {
+            var table = this.datatable,
+            state     = table.getState,
+            request   = table.get('generateRequest')(state, table);
+            this.datasource.sendRequest(request, {
+                success  : table.onDataReturnInitializeTable,
+                scope    : table,
+                argument : state,
+            });
         },
         render: function () {
-            this.fixupEditTemplate();
-            this.tabview.render();
+            var self = this;
+
+            self.fixupEditTemplate();
+
+            mkButton('#new-ticket').on('click', function () {
+                Ticket.create(self, {
+                    severity   : 'minor',
+                    visibility : 'public'
+                }).edit(_.bind(self.createTicket, self));
+            });
+            mkButton('#subscribe');
+            mkButton('#filter');
+            self.tabview.render();
+            self.datatable = new YAHOO.widget.DataTable(
+                'datatable',
+                self.columns,
+                self.datasource,
+                {   initialRequest: 'sort=lastReply&dir=desc&startIndex=0&results=25',
+                    dynamicData: true,
+                    sortedBy: { key: "lastReply", dir:YAHOO.widget.DataTable.CLASS_DESC },
+                    paginator: new YAHOO.widget.Paginator({ rowsPerPage: 25 })
+                }
+            );
+            self.datatable.handleDataReturnPayload = function(req, res, pl) {
+                pl.totalRecords = res.meta.totalRecords;
+                return pl;
+            };
         },
-        datasource: function (tickets) {
+        buildDatasource: function (url) {
             function parseDate(str) {
                 try { 
                     return Date.parse(str);
@@ -360,51 +442,39 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
                 }
             }
 
-            var source = new YAHOO.util.DataSource(tickets);
-            source.responseType = YAHOO.util.DataSource.TYPE_JSARRAY;
+            var source = new YAHOO.util.DataSource(url);
+            source.responseType = YAHOO.util.DataSource.TYPE_JSON;
             source.responseSchema = { 
+                resultsList: 'records',
+                metaFields: { totalRecords : 'total' },
                 fields: [
-                    { key: 'id',          parser: 'number'  },
-                    { key: 'url',         parser: 'string'  },
-                    { key: 'title',       parser: 'string'  },
+                    { key: 'id',         parser: 'number'  },
+                    { key: 'url',        parser: 'string'  },
+                    { key: 'title',      parser: 'string'  },
                     { key: 'openedBy',   parser: 'string'  },
                     { key: 'openedOn',   parser: parseDate },
                     { key: 'assignedTo', parser: 'string'  },
-                    { key: 'status',      parser: 'string'  },
+                    { key: 'status',     parser: 'string'  },
                     { key: 'lastReply',  parser: parseDate }
                 ]
             };
             return source;
         },
         create: function (args) {
-            var self = Y.Object(this),
-            tickets  = args.tickets,
-            node;
+            var self = Y.Object(this), node;
 
             _.each(['ticketView', 'ticketEdit', 'users'], function (k) {
                 self[k] = args[k];
             });
-            self.users   = args.users;
-            self.tabs    = {};
-            self.tickets = {};
-
-            _(tickets).chain()
-                .map(_.bind(Ticket.create, Ticket, self))
-                .each(function (t) {
-                    self.tickets[t.data.id] = t;
-                });
-
-            self.datatable = new YAHOO.widget.DataTable(
-                document.createElement('div'),
-                self.columns(), 
-                self.datasource(tickets)
-            );
-
-            node = Y.one(self.datatable.get('element'));
-            node.addClass('yui3-tab-panel');
+            self.users      = args.users;
+            self.tabs       = {};
+            self.datasource = self.buildDatasource(args.datasource);
+            self.columns    = self.buildColumns();
 
             self.tabview = new Y.TabView({
-                children: [ { label: 'Tickets', panelNode: node } ]
+                children: [ 
+                    { label: 'Tickets', panelNode: Y.one('#main-tab') } 
+                ]
             });
 
             return self;
@@ -416,28 +486,38 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
             tab.remove();
         },
 
+        getTicket: function (id, callback) {
+            Y.io('tickets/' + id, { 
+                on: { success: ticketResponse(callback) } 
+            });
+        },
+
         openTab: function (id) {
-            var tab = this.tabs[id],
-            template, closer;
+            var self = this,
+            tab = self.tabs[id],
+            template, closer, self;
 
             if (tab) {
+                self.select(tab);
                 return tab;
             }
 
-            tab = this.tabs[id] = new Y.Tab({
-                panelNode : this.tickets[id].render(),
-                label     : id.toString() 
-            });
+            self.getTicket(id, function (data) {
+                tab = self.tabs[id] = new Y.Tab({
+                    panelNode : Ticket.create(self, data).render(),
+                    label     : id.toString() 
+                });
 
-            closer = _.bind(this.closeTab, this, id);
-            tab.after('render', function () {
-                var a = Y.Node.create('<a> x</a>');
-                Y.on('click', closer, a);
-                tab.get('boundingBox').one('a').append(a);
-            });
+                closer = _.bind(self.closeTab, self, id);
+                tab.after('render', function () {
+                    var a = Y.Node.create('<a> x</a>');
+                    Y.on('click', closer, a);
+                    tab.get('boundingBox').one('a').append(a);
+                });
 
-            this.tabview.add(tab);
-            return tab;
+                self.tabview.add(tab);
+                self.select(tab);
+            });
         }
     },
     helpdesk = Helpdesk.create({
@@ -450,53 +530,7 @@ YUI({filter: 'raw'}).use('gallery-overlay-modal', 'yui2-dragdrop', 'yui2-datatab
             'xtopher'  : 'Chris Palamera',
             'vrby'     : 'Jamie Vrbsky'
         },
-        tickets: [
-            {   
-                id         : '12049',
-                url        : 'http://the.real.url/no_for_real/12049',
-                title      : 'My dog has no nose',
-                openedBy   : 'dbell',
-                openedOn   : '2010-01-02 09:53',
-                assignedTo : 'pdriver',
-                assignedOn : '2010-01-02 11:00',
-                assignedBy : 'vrby',
-                status     : 'open',
-                lastReply  : '2010-04-22 12:00',
-                visibility : 'public',
-                severity   : 'critical',
-                keywords   : 'squad, tell the, joke',
-                webgui     : '7.7.29',
-                wre        : '0.9.3',
-                os         : 'Beige Pants',
-                comments   : [
-                    {   
-                        timestamp  : '2010-01-02 09:53',
-                        author     : 'dbell',
-                        body       : "my dog has no nose. It's a golden labrador and now he doesn't eat or play with the kids like he used to. He doesn't smile or lick his lips or drink his soup with a straw or anything.  I've attached a picture of him. Please help.",
-                        attachments : [
-                            {
-                                url  :  '/uploads/fd/fd76868768sfsf762/BobbyTables.jpg',
-                                name : 'Bobby Tables.jpg',
-                                size : 280000
-                            }
-                        ],
-                        status: 'open'
-                    },
-                    {   
-                        timestamp  : '2010-01-02 10:34',
-                        author     : 'pdriver',
-                        body       : 'how does he smell?',
-                        status     : 'feedback'
-                    },
-                    {   
-                        timestamp  : '2010-01-02 11:01',
-                        author     : 'dbell',
-                        body       : 'Terrible.',
-                        status     : 'open'
-                    }
-                ]
-            }
-        ]
+        datasource: 'datasource?'
     });
 
     Y.on('domready', _.bind(Helpdesk.render, helpdesk));
