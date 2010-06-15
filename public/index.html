@@ -20,7 +20,7 @@
             <div id='datatable'>
             </div>
         </div>
-        <form id='ticket-edit-template' class='ticket-edit'>
+        <form id='ticket-edit-template' class='ticket-edit modal-dialog'>
             <div class='yui-widget-hd'>
                 <h1>Edit Ticket</h1>
                 <a class='close'>x</a>
@@ -153,6 +153,40 @@
                 </div>
             </div>
             <div class='footer'></div>
+        </div>
+        <div id='filter-dialog' class='modal-dialog'>
+            <div class='yui-widget-hd'>
+                <h1>Filter Tickets</h1>
+                <button class='close'>x</button>
+                <div class='footer'></div>
+            </div>
+            <div class='yui-widget-bd'>
+                Match
+                <select class='conjunction'>
+                    <option value='any'>Any</option>
+                    <option value='all'>All</option>
+                </select> 
+                of the following rules:
+                <table id='active-filters'>
+                    <tr class='addrow'>
+                        <td><a class='add'></a></td>
+                        <td>
+                            <select class='type'>
+                                <option value='status'>Ticket Status</option>
+                                <option value='assignedTo'>Assigned To</option>
+                                <option value='openedBy'>Opened By</option>
+                                <option value='openedOn'>Opened On</option>
+                                <option value='lastReply'>Last Reply</option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <div class='yui-widget-ft'>
+                <button class='search'>Search</button>
+                <button class='reset'>Reset</button>
+                <div class='footer'></div>
+            </div>
         </div>
         <iframe id='yui-history-iframe' src='blank.html'></iframe>
         <input id='yui-history-field' type='hidden' />

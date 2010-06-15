@@ -15,7 +15,7 @@ _.mixin({
 
 YUI({filter: 'raw'}).use(
 'yui2-dragdrop', 'yui2-connection', 'yui2-json', 'yui2-paginator', 
-'yui2-datatable', 'yui2-button', 
+'yui2-datatable', 'yui2-button', 'yui2-calendar',
 'history', 'node', 'tabview', 'gallery-overlay-modal', 'overlay', 'event', 
 'querystring-stringify-simple', 'io-upload-iframe', 'io', 'json', function (Y) {
 
@@ -82,6 +82,102 @@ YUI({filter: 'raw'}).use(
         widget.addClass(classes);
         return widget;
     },
+
+    Filter = {
+        extend: function (prop) {
+            var o = Y.Object(this);
+            _.extend(o, prop);
+            return o;
+        },
+        createDom: function() {
+            var self = this, remover = Y.Node.create('<a class="rem">');
+
+            remover.on('click', function () {
+                self.node.remove();
+                self.remove();
+            });
+
+            this.node = Y.Node.create('<tr class="filter">')
+                .append(Y.Node.create('<td>').append(remover))
+                .append(Y.Node.create('<td>').append(this.label))
+                .append(Y.Node.create('<td>').append(this.inputs()));
+
+            if (this.value) {
+                this.setValue();
+            }
+            return this.node;
+        },
+        rule: function () {
+            return {
+                type: this.type,
+                arguments: this.arguments()
+            };
+        }
+    },
+    MultiSelectFilter = Filter.extend({
+        inputs: function () {
+            var s = Y.Node.create('<select multiple>');
+            fillSelect(s, this.options);
+            return s;
+        },
+        setValue: function () {
+            var self = this;
+            _.each(self.value, function (value) {
+                self.node.all('option').each(function (n) {
+                    if (n.get('value') === value) {
+                        n.set('selected', true);
+                    }
+                });
+            });
+        },
+        arguments: function (r) {
+            return _(this.node.all('option')._nodes).chain()
+                .filter(function (e) {
+                    return e.selected;
+                }).map(function (e) {
+                    return e.value;
+                }).value();
+        },
+    }),
+    DateRangeFilter = Filter.extend({
+        inputs: function () {
+            var div = Y.Node.create('<table><tr><th>From</th><th>To</th></tr><td class="from"></td><td class="to"></td></tr></table>');
+
+            // YUI2 really wants this in-dom when we start making calendars
+            Y.one('body').append(div);
+
+            this.from = new YAHOO.widget.Calendar(
+                Y.Node.getDOMNode(div.one('.from'))
+            );
+            this.to = new YAHOO.widget.Calendar(
+                Y.Node.getDOMNode(div.one('.to'))
+            );
+            this.from.render();
+            this.to.render();
+
+            div.remove();
+            return div;
+        },
+        setValue: function () {
+            this.setDate('to', this.value.to);
+            this.setDate('from', this.value.from);
+        },
+        getDate: function (which) {
+            var d = this[which].getSelectedDates()[0];
+            return d && d.toString('yyyy-MM-dd');
+        },
+        setDate: function (which, str) {
+            var cal = this[which];
+            cal.select(Date.parse(str));
+            cal.render();
+        },
+        arguments: function () {
+            return {
+                from : this.getDate('from'),
+                to   :  this.getDate('to')
+            };
+        }
+    }),
 
     Ticket    = {
         editDirectives: {
@@ -163,7 +259,10 @@ YUI({filter: 'raw'}).use(
                 zIndex    : 2,
                 centered  : true
             }).plug(Y.Plugin.OverlayModal),
-            close    = _.bind(overlay.destroy, overlay);
+            close    = function () {
+                overlay.destroy();
+                delete helpdesk.closeDialog;
+            };
 
             _.detect(Y.NodeList.getDOMNodes(vinputs), function (radio) {
                 return radio.value === data.visibility;
@@ -177,7 +276,8 @@ YUI({filter: 'raw'}).use(
 
             mkButton(form.one('.save'))
                 .on('click', _.bind(save, null, form, close))
-            
+
+            helpdesk.closeDialog = close;
             overlay.render();
         },
 
@@ -272,7 +372,8 @@ YUI({filter: 'raw'}).use(
 
             return Y.JSON.stringify({
                 open    : label || null, 
-                tickets : tickets
+                tickets : tickets,
+                filter  : this.filter
             });
         },
 
@@ -281,6 +382,15 @@ YUI({filter: 'raw'}).use(
             currentlyOpen = _.clone(self.tabs);
 
             state = Y.JSON.parse(state);
+            if (self.filter = state.filter) {
+                self.clearFilters();
+                _.each(self.filter.rules, _.bind(self.addRule, self));
+                Y.one(self.filterDom)
+                    .one('.conjunction')
+                    .set('value', filter.match);
+            }
+            self.refresh();
+
             _.each(state.tickets, function (id) {
                 if (id in currentlyOpen) {
                     delete currentlyOpen[id];
@@ -296,16 +406,25 @@ YUI({filter: 'raw'}).use(
             else {
                 self.select(self.mainTab);
             }
+            if (self.closeDialog) {
+                self.closeDialog();
+            }
         },
 
         addComment: function (id, comment, callback) {
+            var self = this;
             Y.io('tickets/' + id + '/comment', {
                 method: 'POST',
                 form: { 
                     id     : comment,
                     upload : true,
                 },
-                on: { complete: _.bind(this.getTicket, this, id, callback) }
+                on: { 
+                    complete: function() {
+                        self.refresh();
+                        self.getTicket(id, callback);
+                    }
+                }
             });
         },
 
@@ -430,10 +549,94 @@ YUI({filter: 'raw'}).use(
             fillSelect(template.one('[name=severity]'), this.severity);
             fillSelect(template.one('[name=assignedTo]'), this.users);
         },
+        centerFilters: function () {
+            if (this.filterOverlay) {
+                this.filterOverlay.set('centered', true);
+            }
+        },
+        addRule: function (r) {
+            var self = this, id = Y.guid(), row, dom = Y.one(self.filterDom), 
+            p = {
+                type   : r.type,
+                label  : Y.one(
+                _.detect(dom.all('.type option')._nodes, function (o) {
+                    return o.value === r.type;
+                })).get('text'),
+                value  : r.arguments,
+                remove : function () {
+                    delete self.rules[id];
+                    self.centerFilters();
+                }
+            };
+            switch (r.type) {
+                case 'status':
+                    p.options = self.status;
+                    rule = MultiSelectFilter.extend(p);
+                    break;
+                case 'assignedTo':
+                case 'openedBy':
+                    p.options = self.users;
+                    rule = MultiSelectFilter.extend(p);
+                    break;
+                case 'openedOn':
+                case 'lastReply':
+                    rule = DateRangeFilter.extend(p);
+                    break;
+            }
+            self.rules[id] = rule;
+            row = dom.one('.addrow');
+            row.insert(rule.createDom(), row);
+            self.centerFilters();
+        },
+
+        buildFilter: function () {
+            this.filter = {
+                match: Y.one(this.filterDom)
+                    .one('.conjunction').get('value'),
+                rules: _(this.rules).chain().values().map(function (r) {
+                    return r.rule();
+                }).value()
+            };
+        },
+
+        fixupFilterDialog: function () {
+            var self = this, 
+            close    = function () {
+                self.filterOverlay.hide();
+            },
+            search = function () {
+                self.buildFilter();
+                self.refresh();
+                self.mark();
+                close();
+            },
+            dom = Y.one(self.filterDom);
+
+            dom.all('button').each(mkButton);
+
+            dom.one('.close').on('click', close);
+            dom.one('.search').on('click', search);
+            dom.one('.reset').on('click', function () {
+                self.clearFilters();
+                search();
+            });
+
+            dom.one('.add').on('click', function () {
+                self.addRule({type: dom.one('.type').get('value')});
+            });
+        },
+        clearFilters: function () {
+            this.rules = {};
+            Y.one(this.filterDom).all('.filter').remove();
+            this.centerFilters();
+        },
         refresh: function () {
-            var table = this.datatable,
-            state     = table.getState,
-            request   = table.get('generateRequest')(state, table);
+            var table = this.datatable, state, request;
+            if (!table) {
+                return;
+            }
+            state   = table.getState();
+            request = table.get('generateRequest')(state, table);
             this.datasource.sendRequest(request, {
                 success  : table.onDataReturnInitializeTable,
                 scope    : table,
@@ -441,33 +644,60 @@ YUI({filter: 'raw'}).use(
             });
         },
         render: function () {
-            var self = this;
+            var self = this, dialog, dt, old;
 
             self.fixupEditTemplate();
+            self.fixupFilterDialog();
 
-            mkButton('#new-ticket').on('click', function () {
+            mkButton(self.newTicket).on('click', function () {
                 Ticket.create(self, {
                     severity   : 'minor',
                     visibility : 'public'
                 }).edit(_.bind(self.createTicket, self));
             });
-            mkButton('#subscribe');
-            mkButton('#filter');
+
+            self.filterOverlay = dialog = new Y.Overlay({
+                zIndex    : 2,
+                centered  : true,
+                srcNode   : Y.one(self.filterDom).remove()
+                                .setStyle('display', 'block')
+            }).plug(Y.Plugin.OverlayModal);
+            dialog.hide();
+            dialog.render();
+
+            mkButton(self.filterButton).on('click', function () {
+                dialog.show();
+            });
+            mkButton(self.subscribeButton);
             self.tabview.render();
-            self.datatable = new YAHOO.widget.DataTable(
+            self.datatable = dt = new YAHOO.widget.DataTable(
                 'datatable',
                 self.columns,
                 self.datasource,
-                {   initialRequest: 'sort=lastReply&dir=desc&startIndex=0&results=25',
+                {   initialRequest: self.addFilter(
+                        'sort=lastReply&dir=desc&startIndex=0&results=25'
+                    ),
                     dynamicData: true,
-                    sortedBy: { key: "lastReply", dir:YAHOO.widget.DataTable.CLASS_DESC },
+                    sortedBy: { 
+                        key: "lastReply", 
+                        dir: YAHOO.widget.DataTable.CLASS_DESC 
+                    },
                     paginator: new YAHOO.widget.Paginator({ rowsPerPage: 25 })
                 }
             );
-            self.datatable.handleDataReturnPayload = function(req, res, pl) {
+            dt.handleDataReturnPayload = function(req, res, pl) {
                 pl.totalRecords = res.meta.totalRecords;
                 return pl;
             };
+            old = dt.get('generateRequest');
+            dt.set('generateRequest', function (state, dt) {
+                return self.addFilter(old(state, dt));
+            });
+        },
+        addFilter: function (url) {
+            return this.filter ?
+                url + ';filter=' + escape(Y.JSON.stringify(this.filter)) :
+                url;
         },
         buildDatasource: function (url) {
             function parseDate(str) {
@@ -499,26 +729,24 @@ YUI({filter: 'raw'}).use(
         },
         create: function (args) {
             var self = Y.Object(this), node;
-
-            _.each(['ticketView', 'ticketEdit', 'users'], function (k) {
-                self[k] = args[k];
-            });
-            self.users      = args.users;
+            _.extend(self, args);
+            self.rules      = {};
             self.tabs       = {};
             self.datasource = self.buildDatasource(args.datasource);
             self.columns    = self.buildColumns();
             self.mainTab    = new Y.Tab({
                 label: 'Tickets', 
-                panelNode: Y.one('#main-tab')
+                panelNode: Y.one(args.mainTab)
             });
 
             self.tabview = new Y.TabView({ children: [ self.mainTab ] });
-
-            self.tabview.after('selectionChange', function () {
-                Y.History.navigate('helpdesk', self.getState());
-            });
+            self.tabview.after('selectionChange', _.bind(self.mark, self));
 
             return self;
+        },
+
+        mark: function () {
+            Y.History.navigate('helpdesk', this.getState());
         },
 
         closeTab: function (id) {
@@ -531,6 +759,20 @@ YUI({filter: 'raw'}).use(
             Y.io('tickets/' + id, { 
                 on: { success: ticketResponse(callback) } 
             });
+        },
+        
+        registerHistory: function() {
+            var initial = Y.History.getBookmarkedState('helpdesk'),
+            update      = _.bind(this.updateFromState, this);
+
+            if (initial) {
+                update(initial);
+            }
+            else {
+                initial = '{open: null, tickets: []}';
+            }
+            Y.History.register('helpdesk', initial)
+                .on('history:moduleStateChange', update)
         },
 
         openTab: function (id, select) {
@@ -561,8 +803,13 @@ YUI({filter: 'raw'}).use(
         }
     },
     helpdesk = Helpdesk.create({
-        ticketView: '#ticket-view-template',
-        ticketEdit: '#ticket-edit-template',
+        ticketView      : '#ticket-view-template',
+        ticketEdit      : '#ticket-edit-template',
+        mainTab         : '#main-tab',
+        filterDom       : '#filter-dialog',
+        newTicket       : '#new-ticket',
+        filterButton    : '#filter',
+        subscribeButton : '#subscribe',
         users: {
             'pdriver'  : 'Paul Driver',
             'dbell'    : 'Doug Bell',
@@ -575,17 +822,7 @@ YUI({filter: 'raw'}).use(
 
 
     Y.on('domready', function () {
-        var initial = Y.History.getBookmarkedState('helpdesk'),
-        update      = _.bind(helpdesk.updateFromState, helpdesk);
-
-        if (initial) {
-            update(initial);
-        }
-        else {
-            initial =  '{open: null, tickets: []}';
-        }
-        Y.History.register('helpdesk', initial)
-            .on('history:moduleStateChange', update)
+        helpdesk.registerHistory();
         Y.History.initialize('#yui-history-field', '#yui-history-iframe');
         Y.History.on('history:ready', _.bind(helpdesk.render, helpdesk));
     });

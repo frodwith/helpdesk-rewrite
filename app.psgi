@@ -8,9 +8,8 @@ use URI::Escape;
 use JSON;
 use Plack::Builder;
 use Flea;
-
-use warnings;
-use strict;
+use Modern::Perl;
+use DateTime::Format::Strptime;
 
 use lib 'lib';
 use Helpdesk::Ticket;
@@ -55,6 +54,40 @@ sub write_ticket {
     binmode($fh, ':utf8');
     print $fh ticket_to_json($t);
     close $fh;
+}
+
+{
+
+my $parsi = DateTime::Format::Strptime->new(
+    pattern   => 'yyyy-MM-dd',
+    locale    => 'en_US',
+    time_zone => 'UTC',
+);
+
+my %types;
+@types{qw(status assignedTo openedBy openedOn lastReply)} = ();
+
+sub passes_rule {
+    my ($ticket, $rule) = @_;
+    my $type = $rule->{type};
+    return unless exists $types{$type};
+
+    my $arg  = $rule->{arguments};
+    my $val  = $ticket->$type;
+    if (ref $arg eq 'ARRAY') {
+        my %set;
+        @set{@$arg} = ();
+        return exists $set{$val};
+    }
+    else {
+        my ($from, $to) = map { $parsi->parse_datetime($_) } 
+                        @{$arg}{qw(from to)};
+        return if $from && $val < $from;
+        return if $to   && $val > $to;
+        return 1;
+    }
+}
+
 }
 
 {
@@ -165,15 +198,32 @@ builder {
             my $request = request(shift);
             my ($size, $start, $sort, $dir) 
                 = map { scalar $request->param($_) } 
-                qw(size start sort dir);
+                qw(results startIndex sort dir);
 
             $size  = 25 unless $size > 0;
             $start = 0 unless $start > 0;
             $sort  = 'id' unless exists $sorts{$sort};
 
+            my $json   = $request->param('filter');
+            my $filter = $json && JSON::decode_json($json);
+            my $all    = $filter->{match} eq 'all';
+            my $any    = !$all;
+            my $rules  = $filter->{rules} || [];
+
+            my @filtered = grep {
+                my $t = $_;
+                my $pass = 1;
+                for my $rule (@$rules) {
+                    $pass = passes_rule($t, $rule);
+                    last if $pass  && $any;
+                    last if !$pass && $all;
+                }
+                $pass;
+            } values %tickets;
+
             my @records = map  { $_->to_hash }
                           sort { $sorts{$sort}->() }
-                          values %tickets;
+                          @filtered;
 
             my $count   = @records;
             
