@@ -38,12 +38,11 @@ YUI({
 'querystring-stringify-simple', 'io-upload-iframe', 'io', 'json', function (Y) {
 
     function appUrl(params) {
-        return [
-            helpdesk2.app,
-            _.map(params, function (v, k) {
-                return [escape(k),escape(v)].join('=');
-            }).join('&')
-        ].join('?');
+        var url = helpdesk2.app + '?';
+        _.each(params, function (v, k) {
+            url += escape(k) + '=' + escape(v) + '&';
+        });
+        return url;
     }
 
     _.mixin({
@@ -285,7 +284,7 @@ YUI({
 
                 '.severity'        : lookup(h.severity)(context('severity')),
                 '.keywords'        : 'keywords',
-                '.url'             : 'url',
+                '.url@href'        : 'url',
                 '.webgui'          : 'webgui',
                 '.wre'             : 'wre',
                 '.os'              : 'os',
@@ -929,6 +928,9 @@ YUI({
                                     o[k] = self.i18n(v);
                                 });
                             });
+                        self.mainTab.set('label', self.i18n(
+                            self.mainTab.get('label')
+                        ));
                         self.columns = self.buildColumns();
                         self.fire('helpdesk:config');
                     }
@@ -1047,7 +1049,7 @@ YUI({
         configUrl       : appUrl({func: 'config'}),
         ticketsource    : appUrl({func: 'ticketSource'}),
         usersource      : appUrl({func: 'userSource'}),
-        subscribeUrl    : appUrl({func: 'toggleSubcription'}),
+        subscribeUrl    : appUrl({func: 'toggleSubscription'}),
 
         userUrl: function(id) {
             return appUrl({func: 'user', userId: id});

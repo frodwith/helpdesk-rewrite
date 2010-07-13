@@ -1,5 +1,6 @@
 create table Helpdesk2_Ticket (
     helpdesk   char(22),
+    groupId    char(22),
     id         int,
     openedBy   char(22) not null,
     openedOn   bigint   not null,
@@ -33,5 +34,6 @@ CREATE TABLE Helpdesk2_Comment (
 
 CREATE TABLE Helpdesk2_Attachment (
     comment    char(22),
-    storage    char(22)
+    storage    char(22),
+    filename   char(80)
 );
