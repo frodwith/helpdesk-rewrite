@@ -97,7 +97,7 @@ sub definition {
             hoverHelp => $i18n->get('Username help'),
         },
         getMailPassword => {
-            fieldType => 'text',
+            fieldType => 'password',
             tab       => 'get mail',
             label     => $i18n->get('Password'),
             hoverHelp => $i18n->get('Password help'),
@@ -147,6 +147,19 @@ sub duplicate {
     my %reset = map { "getMail$_" => '' }, qw(Server Account Password CronId);
     $self->update(\%reset);
     return $self;
+}
+
+#----------------------------------------------------------------------------
+
+=head2 getEditTabs
+
+Add the get mail tab.
+
+=cut
+
+sub getEditTabs {
+	my $self = shift;
+	return ($self->maybe::next::method(), ['get mail', 'GetMail', 9]);
 }
 
 #----------------------------------------------------------------------------

@@ -224,8 +224,7 @@ sub render {
     my $self = shift;
     my %hash;
 
-    for my $key (qw(id url status severity))
-    {
+    for my $key (qw(id url status severity)) {
         $hash{$key} = $self->$key;
     }
 
@@ -260,7 +259,7 @@ sub load {
     my $db  = $helpdesk->session->db;
     my $sql = q{select * from Helpdesk2_Ticket where helpdesk = ? and id = ?};
     my $row = $db->quickHashRef($sql, [$helpdesk->getId, $id]);
-    return unless $row;
+    return unless (keys %$row);
     $class->loadFromRow($helpdesk, $row);
 }
 

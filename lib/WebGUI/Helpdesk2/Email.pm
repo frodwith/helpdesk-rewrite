@@ -4,6 +4,7 @@ use Moose;
 use WebGUI::HTML;
 use HTML::Parser;
 use namespace::clean -except => 'meta';
+use WebGUI::Utility;
 
 has session => (
     is       => 'ro',
@@ -117,7 +118,7 @@ sub _build_body {
 has user => (
     is         => 'ro',
     init_arg   => undef,
-    isa        => 'WebGUI:User',
+    isa        => 'WebGUI::User',
     lazy_build => 1,
 );
 

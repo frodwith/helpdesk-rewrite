@@ -58,12 +58,12 @@ use WebGUI::Helpdesk2::Email;
 use WebGUI::Storage;
 use WebGUI::Group;
 use JSON;
-use Scope::Guard;
+use Scope::Guard qw(guard);
 
 use base qw(
-    WebGUI::Asset::Wobject
     WebGUI::AssetAspect::Installable
     WebGUI::AssetAspect::GetMail
+    WebGUI::Asset::Wobject
 );
 
 sub _user {
@@ -138,9 +138,10 @@ sub definition {
         assetName         => $i18n->get('assetName'),
         autoGenerateForms => 1,
         tableName         => 'Asset_Helpdesk2',
+        className         => __PACKAGE__,
         properties        => \%properties
     };
-    return $class->SUPER::definition($session, $definition);
+    return $class->next::method($session, $definition);
 } ## end sub definition
 
 #-------------------------------------------------------------------
@@ -509,7 +510,10 @@ sub onMail {
         }
     }
     else {
-        $ticket = WebGUI::Helpdesk2::Ticket->open(title => $message->subject);
+        $ticket = WebGUI::Helpdesk2::Ticket->open(
+            helpdesk => $self,
+            title    => $message->subject,
+        );
         $status = 'open';
     }
 
