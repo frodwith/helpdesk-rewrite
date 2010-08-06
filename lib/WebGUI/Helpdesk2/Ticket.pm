@@ -83,7 +83,6 @@ sub assign {
     $self->_setAssignedTo($victim);
     $self->_setAssignedOn(DateTime->now);
     $self->_setAssignedBy($self->session->user->userId);
-    $self->save();
 }
 
 has status => (
@@ -106,11 +105,11 @@ sub postComment {
     my $comment = WebGUI::Helpdesk2::Comment->insert(
         ticket => $self,
         body   => $body,
-        status => $status,
+        status => $status || $self->status,
     );
     $comment->attach($storage) if $storage;
     $self->_setLastReply(DateTime->now);
-    $self->status($status);
+    $self->status($comment->status);
     $self->save();
     if ($self->has_comments) {
         $self->_addComment($comment);
@@ -157,14 +156,29 @@ sub _build_subscribers {
         WebGUI::Group->new($self->session, $self->groupId);
 };
 
+sub isOwner {
+    my ($self, $user) = @_;
+    my $session = $self->session;
+    if ($user) {
+        $user = $user->userId if eval { $user->can('userId') };
+    }
+    else {
+        $user = $session->user->userId;
+    }
+    return $user eq $self->openedBy;
+}
+
 sub subscribe {
     my $self    = shift;
     my $session = $self->session;
+    my $hdid    = $self->helpdesk->getId;
+    my $id      = $self->id;
 
     WebGUI::Helpdesk2::Subscription->subscribe(
         session  => $session,
         group    => $self->groupId,
         user     => $session->user,
+        name     => "Ticket $hdid-$id",
         setGroup => sub {
             my $g = shift;
             $self->_set_subscribers($g);
@@ -186,7 +200,6 @@ sub unsubscribe {
             my $g = shift;
             $self->clear_subscribers();
             $self->_killGroupId();
-            $session->log->debug('goddamnit cartman');
             $self->save();
         }
     );
@@ -232,7 +245,8 @@ sub render {
     }
 
     $hash{visibility} = $self->public ? 'public' : 'private';
-    $hash{comments} = [ map { $_->render } $self->comments ];
+    $hash{comments}   = [ map { $_->render } $self->comments ];
+    $hash{owner}      = $self->isOwner;
 
     if (my $group = $self->subscribers) {
         $hash{subscribed} = $group->hasUser($self->session->user);

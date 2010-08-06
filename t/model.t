@@ -55,6 +55,7 @@ sleep 1;
 $ticket->postComment('this is comment 2', 'resolved');
 
 $ticket->assign($him);
+$ticket->save();
 
 $ticket = WebGUI::Helpdesk2::Ticket->load($helpdesk, $ticket->id);
 is $ticket->title, 'test ticket';

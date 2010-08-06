@@ -1,3 +1,8 @@
+.yui3-tab-label a        { display: inline-block; width: 6px; height: 6px;
+                           background-image: url(icons/bullet_toggle_minus.png);
+                           background-repeat: no-repeat;
+                           background-position: center; margin-left: 4px }
+
 .footer                  { clear: both }
 
 .yui-skin-sam 

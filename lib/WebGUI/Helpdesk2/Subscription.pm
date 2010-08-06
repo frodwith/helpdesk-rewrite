@@ -23,6 +23,8 @@ sub subscribe {
     else {
         $group = WebGUI::Group->new($session, 'new', undef, 1);
         $group->showInForms(0);
+        $group->name($args{name});
+        $group->description("Users subscribed to $args{name}");
     }
 
     $group->addUsers([$user]);

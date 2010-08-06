@@ -1,14 +1,52 @@
 package WebGUI::Asset::Wobject::Helpdesk2;
 
-#-------------------------------------------------------------------
-# WebGUI is Copyright 2001-2010 Plain Black Corporation.
-#-------------------------------------------------------------------
-# Please read the legal notices (docs/legal.txt) and the license
-# (docs/license.txt) that came with this distribution before using
-# this software.
-#-------------------------------------------------------------------
-# http://www.plainblack.com                     info@plainblack.com
-#-------------------------------------------------------------------
+=head1 NAME
+
+WebGUI::Asset::Wobject::Helpdesk2
+
+=head1 DESCRIPTION
+
+A Wobject bug tracker.
+
+=head1 LEGAL
+
+-------------------------------------------------------------------
+ WebGUI is Copyright 2001-2010 Plain Black Corporation.
+-------------------------------------------------------------------
+ Please read the legal notices (docs/legal.txt) and the license
+ (docs/license.txt) that came with this distribution before using
+ this software.
+-------------------------------------------------------------------
+ http://www.plainblack.com                     info@plainblack.com
+-------------------------------------------------------------------
+
+=head1 SECURITY
+
+There are three levels of access to the Helpdesk.  Each successive group
+implies access to the previous.
+
+=head2 Public
+
+Users in this group can see tickets, search for them, etc. but cannot affect
+them in any way (no commenting, editing, etc).  This is the canView group.
+
+=head2 Reporters
+
+These users can post new tickets and comment on public tickets, but cannot
+edit existing tickets (by changing status or assigning them, for instance).
+
+=head2 Staff
+
+These users can edit, change status, and see all private tickets.
+
+=head2 Owners
+
+The reporter of any particular ticket is its owner, and has staff permissions
+on that ticket.
+
+=head1 METHODS
+
+=cut
 
 use strict;
 use warnings;
@@ -16,16 +54,150 @@ use warnings;
 use WebGUI::International;
 use WebGUI::Helpdesk2::Search;
 use WebGUI::Helpdesk2::Subscription;
+use WebGUI::Helpdesk2::Email;
 use WebGUI::Storage;
 use WebGUI::Group;
 use JSON;
+use Scope::Guard;
 
 use base qw(
     WebGUI::Asset::Wobject
     WebGUI::AssetAspect::Installable
+    WebGUI::AssetAspect::GetMail
 );
 
-my @strings = split "\n", <<I18N;
+sub _user {
+    my ($self, $user) = @_;
+    my $session = $self->session;
+    $user ||= $session->user;
+    $user = WebGUI::User->new($session, $user) 
+        unless eval { $user->can('userId') };
+
+    return $user;
+}
+
+sub canView {
+    my ($self, $user) = @_;
+
+    return $self->SUPER::canView($user) || $self->canReport($user);
+}
+
+sub canReport {
+    my ($self, $user) = @_;
+
+    return $self->_user($user)->isInGroup($self->get('reportersGroupId'))
+        || $self->canStaff($user);
+}
+
+sub canStaff {
+    my ($self, $user) = @_;
+
+    return $self->_user($user)->isInGroup($self->get('staffGroupId'));
+}
+
+#-------------------------------------------------------------------
+
+=head2 definition ( )
+
+=cut
+
+sub definition {
+    my ($class, $session, $definition) = @_;
+    my $i18n = WebGUI::International->new( $session, 'Asset_Helpdesk2' );
+
+    tie my %properties, 'Tie::IxHash', (
+        staffGroupId => {
+            fieldType  => 'group',
+            tab        => 'security',
+            label      => $i18n->get('staffGroupId label'),
+            hoverHelp  => $i18n->get('staffGroupId description'),
+        },
+        reportersGroupId => {
+            fieldType  => 'group',
+            tab        => 'security',
+            label      => $i18n->get('reportersGroupId label'),
+            hoverHelp  => $i18n->get('reportersGroupId description'),
+        },
+        subscribedGroupId => {
+            fieldType  => 'group',
+            tab        => 'security',
+            label      => $i18n->get('subscribedGroupId label'),
+            hoverHelp  => $i18n->get('subscribedGroupId description'),
+            noFormPost => 1,
+        },
+        templateIdView => {
+            fieldType   => 'template',
+            tab         => 'display',
+            namespace   => 'Helpdesk2/view',
+            label       => $i18n->get('templateId label'),
+            hoverHelp   => $i18n->get('templateIdView description'),
+        },
+    );
+
+    push @$definition, {
+        assetName         => $i18n->get('assetName'),
+        autoGenerateForms => 1,
+        tableName         => 'Asset_Helpdesk2',
+        properties        => \%properties
+    };
+    return $class->SUPER::definition($session, $definition);
+} ## end sub definition
+
+#-------------------------------------------------------------------
+
+=head2 view ( )
+
+method called by the www_view method.  Returns a processed template
+to be displayed within the page style.  
+
+=cut
+
+sub view {
+    my $self    = shift;
+    my $session = $self->session;
+    my $style   = $session->style;
+    my $url     = $session->url;
+    my $config  = JSON::encode_json({
+        base => $url->extras('/helpdesk2/'),
+        app  => $self->getUrl,
+    });
+    $style->setRawHeadTags("<script>var helpdesk2 = $config</script>");
+    $style->setScript('http://yui.yahooapis.com/combo?3.1.0/build/yui/yui.js');
+    $style->setScript($url->extras('/helpdesk2/helpdesk2.js'));
+    $style->setLink('http://yui.yahooapis.com/combo?3.1.0/build/cssreset/reset-min.css&3.1.0/build/cssfonts/fonts-min.css&3.1.0/build/cssbase/base-min.css',
+        { rel => 'stylesheet' });
+
+    return $self->processTemplate($self->get, $self->get('templateIdView'));
+}
+
+sub forbidden {
+    return shift->session->privilege->insufficient;
+}
+
+sub text {
+    my ($self, $txt) = @_;
+    $self->session->http->setMimeType('text/plain; charset=utf-8');
+    return $txt;
+}
+
+sub json {
+    my ($self, $obj) = @_;
+    $self->session->http->setMimeType('application/json; charset=utf-8');
+    return JSON::encode_json($obj);
+}
+
+sub ticketUrl {
+    my ($self, $ticket) = @_;
+    my $id    = $ticket->id;
+    my $state = $self->session->url->escape(
+        JSON::encode_json({open => $id, tickets => [$id]})
+    );
+    return $self->getUrl . "#helpdesk=$state";
+}
+
+{
+
+    my @strings = split "\n", <<I18N;
 Share this
 link
 Filter Tickets
@@ -79,103 +251,26 @@ Reset
 Tickets
 I18N
 
-#-------------------------------------------------------------------
+    sub www_config {
+        my $self  = shift;
+        return $self->forbidden unless $self->canView;
 
-=head2 definition ( )
-
-=cut
-
-sub definition {
-    my ($class, $session, $definition) = @_;
-    my $i18n = WebGUI::International->new( $session, 'Asset_Helpdesk2' );
-
-    tie my %properties, 'Tie::IxHash', (
-        subscribedGroupId => {
-            fieldType  => 'group',
-            tab        => 'security',
-            label      => $i18n->get('subscribedGroupId label'),
-            hoverHelp  => $i18n->get('subscribedGroupId description'),
-            noFormPost => 1,
-        },
-        templateIdView => {
-            fieldType   => 'template',
-            tab         => 'display',
-            namespace   => 'Helpdesk2/view',
-            label       => $i18n->get('templateId label'),
-            hoverHelp   => $i18n->get('templateIdView description'),
-        },
-    );
-
-    push @$definition, {
-        assetName         => $i18n->get('assetName'),
-        autoGenerateForms => 1,
-        tableName         => 'Asset_Helpdesk2',
-        properties        => \%properties
-    };
-    return $class->SUPER::definition($session, $definition);
-} ## end sub definition
-
-#-------------------------------------------------------------------
-
-=head2 view ( )
-
-method called by the www_view method.  Returns a processed template
-to be displayed within the page style.  
-
-=cut
-
-sub view {
-    my $self    = shift;
-    my $session = $self->session;
-    my $style   = $session->style;
-    my $url     = $session->url;
-    my $config  = JSON::encode_json({
-        base => $url->extras('/helpdesk2/'),
-        app  => $self->getUrl,
-    });
-    $style->setRawHeadTags("<script>var helpdesk2 = $config</script>");
-    $style->setScript('http://yui.yahooapis.com/combo?3.1.0/build/yui/yui.js');
-    $style->setScript($url->extras('/helpdesk2/helpdesk2.js'));
-    $style->setLink('http://yui.yahooapis.com/combo?3.1.0/build/cssreset/reset-min.css&3.1.0/build/cssfonts/fonts-min.css&3.1.0/build/cssbase/base-min.css',
-        { rel => 'stylesheet' });
-
-    return $self->processTemplate($self->get, $self->get('templateIdView'));
-}
-
-sub text {
-    my ($self, $txt) = @_;
-    $self->session->http->setMimeType('text/plain; charset=utf-8');
-    return $txt;
-}
-
-sub json {
-    my ($self, $obj) = @_;
-    $self->session->http->setMimeType('application/json; charset=utf-8');
-    return JSON::encode_json($obj);
-}
-
-sub ticketUrl {
-    my ($self, $ticket) = @_;
-    my $id    = $ticket->id;
-    my $state = $self->session->url->escape(
-        JSON::encode_json({open => $id, tickets => [$id]})
-    );
-    return $self->getUrl . "#helpdesk=$state";
-}
-
-sub www_config {
-    my $self  = shift;
-    my $session = $self->session;
-    my $i18n    = WebGUI::International->new($session, 'Asset_Helpdesk2');
-    my $group   = $self->subscribers;
-    return $self->json({
-        strings    => { map { $_ => $i18n->get($_) } @strings },
-        subscribed => $group && $group->hasUser($session->user),
-    });
+        my $session = $self->session;
+        my $i18n    = WebGUI::International->new($session, 'Asset_Helpdesk2');
+        my $group   = $self->subscribers;
+        return $self->json({
+            strings    => { map { $_ => $i18n->get($_) } @strings },
+            subscribed => $group && $group->hasUser($session->user),
+            reporter   => $self->canReport,
+            staff      => $self->canStaff,
+        });
+    }
 }
 
 sub www_ticketSource {
     my $self = shift;
+    return $self->forbidden unless $self->canView;
+
     my $session = $self->session;
     my $form    = $session->form;
 
@@ -224,11 +319,13 @@ sub renderUser {
 sub subscribe {
     my $self    = shift;
     my $session = $self->session;
+    my $id      = $self->getId;
 
     WebGUI::Helpdesk2::Subscription->subscribe(
         session  => $session,
         group    => $self->get('subscribedGroupId'),
         user     => $session->user,
+        name     => "Helpdesk $id",
         setGroup => sub {
             $self->update({ subscribedGroupId => shift->getId });
         }
@@ -251,11 +348,22 @@ sub unsubscribe {
 
 sub www_toggleSubscription {
     my $self    = shift;
+    return $self->forbidden unless $self->canView;
+
     my $session = $self->session;
     my $form    = $session->form;
     my $id      = $form->get('ticketId');
-    my $obj     = $id ? $self->getTicket($id) : $self;
-    my $group   = $obj->subscribers;
+    my $obj;
+    if ($id) {
+        $obj = $self->getTicket($id);
+        return $self->forbidden 
+            unless $obj->public || $obj->isOwner || $self->canStaff;
+    }
+    else {
+        $obj = $self;
+    }
+
+    my $group = $obj->subscribers;
 
     if ($group && $group->hasUser($self->session->user)) {
         $obj->unsubscribe();
@@ -276,6 +384,8 @@ sub subscribers {
 
 sub www_userSource {
     my $self     = shift;
+    return $self->forbidden unless $self->canView;
+
     my $session  = $self->session;
     my $db       = $session->db;
     my $q        = $session->form->get('query');
@@ -307,13 +417,15 @@ sub getTicket {
 
 sub www_comment {
     my $self    = shift;
+    return $self->forbidden unless $self->canReport;
+
     my $session = $self->session;
     my $form    = $session->form;
     my $id      = $form->get('ticketId') || return;
     my $ticket  = $self->getTicket($id)  || return;
-
     my $body    = $form->get('body');
-    my $status  = $form->get('status');
+    my $status  = ($ticket->isOwner || $self->canStaff) && $form->get('status');
+
     my $storage = WebGUI::Storage->create($session);
     $storage->addFileFromFormPost('attachment');
     unless (@{ $storage->getFiles }) {
@@ -327,24 +439,33 @@ sub www_comment {
 
 sub www_ticket {
     my $self    = shift;
+    return $self->forbidden unless $self->canView;
+
     my $session = $self->session;
     my $form    = $session->form;
     my $id      = $form->get('ticketId');
     my $ticket;
+
     if ($session->request->method eq 'GET') {
         $ticket = $self->getTicket($id);
+
+        return $self->forbidden 
+            unless $ticket->public || $ticket->isOwner || $self->canStaff;
+
         return $self->json($ticket->render);
     }
 
     if ($id eq 'new') {
+        return $self->forbidden unless $self->canReport;
         $ticket = WebGUI::Helpdesk2::Ticket->new(helpdesk => $self);
         $id = $ticket->id;
     }
     else {
         $ticket = $self->getTicket($id);
+        return $self->forbidden unless $ticket->isOwner || $self->canStaff;
     }
 
-    my @edit    = qw(title severity keywords webgui wre os);
+    my @edit = qw(title severity keywords webgui wre os);
     for my $f (@edit) {
         $ticket->$f($form->get($f));
     }
@@ -356,6 +477,43 @@ sub www_ticket {
     $ticket->public($form->get('visibility') eq 'public');
     $ticket->save;
     return $self->text($id);
+}
+
+sub onMail {
+    my ($self, $message) = @_;
+    my $session = $self->session;
+
+    $message = WebGUI::Helpdesk2::Email->new(
+        session => $session,
+        message => $message,
+    );
+
+    my $body = $message->body || return;
+    my $user = $message->user || return;
+    my $old  = $session->user;
+
+    my $guard = guard { $session->user({user => $old}) };
+    $session->user({ user => $user });
+
+    return unless $self->canReport;
+
+    my $ticket = $self->getTicket($message->ticketId);
+
+    # This should be undefined if the poster is not allowed to
+    # change the ticket status
+    my $status;
+
+    if ($ticket) {
+        if ($self->canStaff || $ticket->isOwner) {
+            $status = 'open';
+        }
+    }
+    else {
+        $ticket = WebGUI::Helpdesk2::Ticket->open(title => $message->subject);
+        $status = 'open';
+    }
+
+    $ticket->postComment($body, $status, $message->storage);
 }
 
 1;

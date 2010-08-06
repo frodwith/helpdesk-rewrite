@@ -378,18 +378,60 @@ YUI({
 
         render: function () {
             var self     = this,
-            template     = self.helpdesk.ticketView,
+            helpdesk     = self.helpdesk,
+            template     = helpdesk.ticketView,
             r            = pure(template, self.data, self.viewDirectives()),
-            node         = self.node = Y.Node.create('<div>').append(r);
+            node         = self.node = Y.Node.create('<div>').append(r),
+            editButton   = node.one('.edit-button'),
+            status;
 
-            mkButton(node.one('.edit-button')) .on('click', function () {
-                self.edit(function (form, done) {
-                    helpdesk.saveTicket(self.data.id, form, function (ticket) {
-                        self.update(ticket);
-                        done();
+            if (helpdesk.staff || self.data.owner) {
+                mkButton(editButton).on('click', function () {
+                    self.edit(function (form, done) {
+                        helpdesk.saveTicket(self.data.id, form, 
+                            function (ticket) {
+                                self.update(ticket);
+                                done();
+                            });
                     });
                 });
-            });
+            }
+            else {
+                editButton.remove();
+            }
+
+            if (helpdesk.reporter) {
+                status = node.one('[name=status]');
+                fillSelect(status, helpdesk.status);
+                status.set('value', self.data.status);
+                if (!helpdesk.staff && !self.data.owner) {
+                    status.setAttribute('disabled', 'disabled');
+                }
+
+                mkButton(node.one('.reply'))
+                    .on('click', _.bind(self.reply, self));
+
+                function makeAttacher(node) {
+                    var handle = node.one('input').on('change', function (e) {
+                        var box = this.get('parentNode'),
+                        remover = Y.Node.create('<a>x</a>'),
+                        // file input clones behave inconsistently across browsers
+                        next    = box.cloneNode(false),
+                        name    = box.one('input').getAttribute('name');
+
+                        next.append('<input type="file" name="' + name + '">');
+                        handle.detach();
+                        box.appendChild(remover);
+                        box.get('parentNode').appendChild(next);
+                        makeAttacher(next);
+                        mkButton(remover).on('click', _.bind(box.remove, box));
+                    });
+                }
+                makeAttacher(node.one('.attach-box'));
+            }
+            else {
+                node.one('.new-comment').remove();
+            }
 
             self.on('helpdesk:subscriptionChanged', function () {
                 self.node.one('.subscribe button').
@@ -406,29 +448,6 @@ YUI({
             });
 
             self.fire('helpdesk:subscriptionChanged');
-
-            mkButton(node.one('.reply'))
-                .on('click', _.bind(self.reply, self));
-
-            function makeAttacher(node) {
-                var handle = node.one('input').on('change', function (e) {
-                    var box = this.get('parentNode'),
-                    remover = Y.Node.create('<a>x</a>'),
-                    // file input clones behave inconsistently across browsers
-                    next    = box.cloneNode(false),
-                    name    = box.one('input').getAttribute('name');
-
-                    next.append('<input type="file" name="' + name + '">');
-                    handle.detach();
-                    box.appendChild(remover);
-                    box.get('parentNode').appendChild(next);
-                    makeAttacher(next);
-                    mkButton(remover).on('click', _.bind(box.remove, box));
-                });
-            }
-            makeAttacher(node.one('.attach-box'));
-
-            fillSelect(node.one('[name=status]'), self.helpdesk.status);
 
             return node;
         },
@@ -483,6 +502,11 @@ YUI({
         },
 
         updateFromState: function (state) {
+            if(this.updating) {
+                return;
+            }
+            this.updating = 1;
+
             var self      = this,
             currentlyOpen = _.clone(self.tabs);
 
@@ -516,6 +540,8 @@ YUI({
             }
             Y.one(self.share).one('a')
                 .setAttribute('href', window.location);
+
+            delete this.updating;
         },
 
         addComment: function (id, comment, callback) {
@@ -601,12 +627,11 @@ YUI({
                 status : setText(_.mapFn(self.status)),
                 date   : 'date',
                 link   : function (cell, record, column, text) {
-                    var a      = Y.Node.create('<a>'), 
+                    var a      = Y.Node.create('<a>' + text + '</a>'), 
                     data       = record._oData,
                     id         = data.id;
 
                     a.setAttribute('href', data.url);
-                    a.set('text', text);
 
                     Y.on('click', function (e) {
                         e.halt();
@@ -790,12 +815,17 @@ YUI({
             self.fixupEditTemplate();
             self.fixupFilterDialog();
 
-            mkButton(self.newTicket).on('click', function () {
-                Ticket.create(self, {
-                    severity   : 'minor',
-                    visibility : 'public'
-                }).edit(_.bind(self.createTicket, self));
-            });
+            if (self.reporter) {
+                mkButton(self.newTicket).on('click', function () {
+                    Ticket.create(self, {
+                        severity   : 'minor',
+                        visibility : 'public'
+                    }).edit(_.bind(self.createTicket, self));
+                });
+            } 
+            else {
+                Y.one(self.newTicket).remove();
+            }
 
             self.filterOverlay = dialog = new Y.Overlay({
                 zIndex    : 2,
@@ -959,10 +989,10 @@ YUI({
         },
 
         mark: function () {
-            /* If there's nothing selected, then the open tab just got closed.
-             * We'll be called again in a moment when the new tab gets
-             * selected. */
-            if (this.tabview.get('selection')) {
+            /* We will not mark the state while we're in the process of making
+             * the state consistent.  It screws up the history and can cause
+             * bad oscillation between states. */
+            if (!this.updating) {
                 Y.History.navigate('helpdesk', this.getState());
             }
         },
@@ -1020,7 +1050,7 @@ YUI({
                 });
                 closer = _.bind(self.closeTab, self, id);
                 tab.after('render', function () {
-                    var a = Y.Node.create('<a> x</a>');
+                    var a = Y.Node.create('<a>');
                     Y.on('click', closer, a);
                     tab.get('boundingBox').one('a').append(a);
                     self.getTicket(id, function (data) {

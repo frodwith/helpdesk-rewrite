@@ -11,7 +11,7 @@ use namespace::clean -except => 'meta';
 has helpdesk => (
     is      => 'ro',
     isa     => 'WebGUI::Asset::Wobject::Helpdesk2',
-    handles => ['session'],
+    handles => ['session', 'canStaff'],
 );
 
 has size => (
@@ -121,18 +121,6 @@ sub _build_filter_clause {
     join(" $conj ", @built);
 }
 
-has hide_private => (
-    is         => 'ro',
-    isa        => 'Bool',
-    init_arg   => undef,
-    lazy_build => 1,
-);
-
-sub _build_hide_private {
-    # FIXME: see if the current user can see private tickets
-    return 0;
-}
-
 has where_clause => (
     is         => 'ro',
     init_arg   => undef,
@@ -143,7 +131,7 @@ sub _build_where_clause {
     my $self    = shift;
     my $filter  = $self->filter_clause;
     my @clauses;
-    if ($self->hide_private) {
+    unless ($self->canStaff) {
         my $session = $self->session;
         my $user = $session->db->dbh->quote($session->user->userId);
         push @clauses, "t.public = 1 OR t.openedBy = $user"

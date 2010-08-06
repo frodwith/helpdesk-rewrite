@@ -7,6 +7,22 @@ our $I18N = {
         message     => q{Helpdesk 2},
         lastUpdated => 1278540767,
     },
+    'reportersGroupId label' => {
+        message     => q{Reporters},
+        lastUpdated => 1278540767,
+    },
+    'reportersGroupId description' => {
+        message     => q{Can post new tickets and comments},
+        lastUpdated => 1278540767,
+    },
+    'staffGroupId label' => {
+        message     => q{Staff},
+        lastUpdated => 1278540767,
+    },
+    'staffGroupId description' => {
+        message     => q{Group with all helpdesk permissions},
+        lastUpdated => 1278540767,
+    },
     'subscribedGroupId label' => {
         message     => q{Subcribed Group},
         lastUpdated => 1278540767,
