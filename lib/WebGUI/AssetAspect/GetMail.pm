@@ -289,6 +289,31 @@ sub onMail {
 
 #----------------------------------------------------------------------------
 
+=head2 reply (message)
+
+Returns WebGUI::Mail::Send representing a bare-bones reply to the passed
+message.  The returned mail has no content, and the mail will not be sent by
+this method.  Those things are up to the caller.
+
+=cut
+
+sub reply {
+    my ($self, $message) = @_;
+    my $from = $self->get('getMailAccount');
+
+    WebGUI::Mail::Send->create(
+        $self->session, {
+            from      => $from,
+            to        => $message->{from},
+            subject   => "RE: $message->{subject}",
+            replyTo   => $from,
+            inReplyTo => $message->{messageId},
+        }
+    );
+}
+
+#----------------------------------------------------------------------------
+
 =head2 DOES ( role )
 
 Returns true if the asset does the specified role. This mixin does the 

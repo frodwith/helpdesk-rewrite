@@ -8,12 +8,13 @@ use WebGUI::Group;
 sub subscribe {
     my ($class, %args) = @_;
     my ($session, $user, $group);
-    
-
-    $user = $args{user} || return;
-    $user = $user->userId if eval { $user->can('userId') };
 
     $session = $args{session};
+    use Data::Dumper;
+    $session->log->error(Dumper \%args);
+    
+    $user = $args{user} || return;
+    $user = $user->userId if eval { $user->can('userId') };
 
     if ($group = $args{group}) {
         unless (eval { $group->can('getId') }) {

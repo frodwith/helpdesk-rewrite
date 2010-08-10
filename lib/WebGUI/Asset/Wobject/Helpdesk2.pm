@@ -1,5 +1,26 @@
 package WebGUI::Asset::Wobject::Helpdesk2;
 
+use strict;
+use warnings;
+
+use Encode;
+use WebGUI::International;
+use WebGUI::Helpdesk2::Search;
+use WebGUI::Helpdesk2::Subscription;
+use WebGUI::Helpdesk2::Email;
+use WebGUI::Storage;
+use WebGUI::Group;
+use WebGUI::Mail::Send;
+use JSON;
+use Scope::Guard qw(guard);
+
+use base qw(
+    WebGUI::AssetAspect::Installable
+    WebGUI::AssetAspect::GetMail
+    WebGUI::AssetAspect::Subscribable
+    WebGUI::Asset::Wobject
+);
+
 =head1 NAME
 
 WebGUI::Asset::Wobject::Helpdesk2
@@ -48,24 +69,6 @@ on that ticket.
 
 =cut
 
-use strict;
-use warnings;
-
-use WebGUI::International;
-use WebGUI::Helpdesk2::Search;
-use WebGUI::Helpdesk2::Subscription;
-use WebGUI::Helpdesk2::Email;
-use WebGUI::Storage;
-use WebGUI::Group;
-use JSON;
-use Scope::Guard qw(guard);
-
-use base qw(
-    WebGUI::AssetAspect::Installable
-    WebGUI::AssetAspect::GetMail
-    WebGUI::Asset::Wobject
-);
-
 sub _user {
     my ($self, $user) = @_;
     my $session = $self->session;
@@ -95,6 +98,12 @@ sub canStaff {
     return $self->_user($user)->isInGroup($self->get('staffGroupId'));
 }
 
+sub i18n {
+    my $self    = shift;
+    my $session = shift || $self->session;
+    WebGUI::International->new( $session, 'Asset_Helpdesk2' );
+}
+
 #-------------------------------------------------------------------
 
 =head2 definition ( )
@@ -103,7 +112,7 @@ sub canStaff {
 
 sub definition {
     my ($class, $session, $definition) = @_;
-    my $i18n = WebGUI::International->new( $session, 'Asset_Helpdesk2' );
+    my $i18n = $class->i18n($session);
 
     tie my %properties, 'Tie::IxHash', (
         staffGroupId => {
@@ -117,13 +126,6 @@ sub definition {
             tab        => 'security',
             label      => $i18n->get('reportersGroupId label'),
             hoverHelp  => $i18n->get('reportersGroupId description'),
-        },
-        subscribedGroupId => {
-            fieldType  => 'group',
-            tab        => 'security',
-            label      => $i18n->get('subscribedGroupId label'),
-            hoverHelp  => $i18n->get('subscribedGroupId description'),
-            noFormPost => 1,
         },
         templateIdView => {
             fieldType   => 'template',
@@ -193,7 +195,7 @@ sub ticketUrl {
     my $state = $self->session->url->escape(
         JSON::encode_json({open => $id, tickets => [$id]})
     );
-    return $self->getUrl . "#helpdesk=$state";
+    $self->session->url->getSiteURL . $self->getUrl . "#helpdesk=$state";
 }
 
 {
@@ -257,8 +259,8 @@ I18N
         return $self->forbidden unless $self->canView;
 
         my $session = $self->session;
-        my $i18n    = WebGUI::International->new($session, 'Asset_Helpdesk2');
-        my $group   = $self->subscribers;
+        my $i18n    = $self->i18n;
+        my $group   = $self->getSubscriptionGroup;
         return $self->json({
             strings    => { map { $_ => $i18n->get($_) } @strings },
             subscribed => $group && $group->hasUser($session->user),
@@ -275,15 +277,21 @@ sub www_ticketSource {
     my $session = $self->session;
     my $form    = $session->form;
 
-    my $json   = $form->get('filter');
-    my $search = WebGUI::Helpdesk2::Search->new(
-        helpdesk => $self,
-        size     => $form->get('results'),
-        start    => $form->get('startIndex'),
-        sort     => $form->get('sort'),
-        dir      => $form->get('dir'),
-        filter   => $json && JSON::decode_json($json),
+    my %args = (helpdesk => $self);
+    if (my $json = $form->get('filter')) {
+        $args{filter} = JSON::decode_json($json);
+    }
+    my %tr = (
+        size  => 'results',
+        start => 'startIndex',
+        sort  => 'sort',
+        dir   => 'dir',
     );
+    for my $k (keys %tr) {
+        my $v = $form->get($tr{$k}) or next;
+        $args{$k} = $v;
+    }
+    my $search = WebGUI::Helpdesk2::Search->new(\%args);
 
     return $self->json({
         count   => $search->count,
@@ -317,32 +325,39 @@ sub renderUser {
     };
 }
 
+# We'll create our own subscription groups (so we can delete them when they
+# have nobody in them)
+sub createSubscriptionGroup { }
+
+# we'll call notifySubscribers manually when tickets are opened/updated
+sub shouldSkipNotification { 1 }
+
 sub subscribe {
-    my $self    = shift;
+    my ($self, $user) = @_;
     my $session = $self->session;
     my $id      = $self->getId;
 
     WebGUI::Helpdesk2::Subscription->subscribe(
         session  => $session,
-        group    => $self->get('subscribedGroupId'),
-        user     => $session->user,
+        group    => $self->getSubscriptionGroup,
+        user     => $user || $session->user,
         name     => "Helpdesk $id",
         setGroup => sub {
-            $self->update({ subscribedGroupId => shift->getId });
+            $self->update({ subscriptionGroupId => shift->getId });
         }
     );
 }
 
 sub unsubscribe {
-    my $self    = shift;
+    my ($self, $user) = @_;
     my $session = $self->session;
 
     WebGUI::Helpdesk2::Subscription->unsubscribe(
         session    => $session,
-        group      => $self->get('subscribedGroupId'),
-        user       => $session->user,
+        group      => $self->getSubscriptionGroup,
+        user       => $user || $session->user,
         unsetGroup => sub {
-            $self->update({ subscribedGroupId => '' });
+            $self->update({ subscriptionGroupId => '' });
         }
     );
 }
@@ -364,7 +379,7 @@ sub www_toggleSubscription {
         $obj = $self;
     }
 
-    my $group = $obj->subscribers;
+    my $group = $obj->getSubscriptionGroup;
 
     if ($group && $group->hasUser($self->session->user)) {
         $obj->unsubscribe();
@@ -374,12 +389,11 @@ sub www_toggleSubscription {
         $obj->subscribe();
         return $self->text('subscribed');
     }
-
 }
 
-sub subscribers {
+sub getSubscriptionGroup {
     my $self = shift;
-    my $id   = $self->get('subscribedGroupId') || return;
+    my $id   = $self->get('subscriptionGroupId') || return undef;
     return WebGUI::Group->new($self->session, $id);
 }
 
@@ -438,6 +452,48 @@ sub www_comment {
     return $self->text('ok');
 }
 
+sub getSubscriptionTemplateNamespace { 'Helpdesk2/email' }
+
+sub notifySubscribers {
+    my ($self, $ticket) = @_;
+    my $group   = $self->getSubscriptionGroup || return;
+    my $session = $self->session;
+    my $tid     = $ticket->id;
+    my $aid     = $self->getId;
+    my $count   = $ticket->commentCount;
+    my $prev    = $count - 1;
+    my $addr    = $self->get('getMailAccount');
+    my $subj    = sprintf('%s #%d', $self->getTitle, $ticket->id);
+    $subj       = "RE: $subj" if $count > 1;
+
+    local *_makeMessageId = sub { "$tid.$count\@$aid" };
+    local *getTemplateVars = sub {
+        {   helpdesk => $self->get,
+            ticket => $ticket->render,
+            commentor => $self->renderUser($session->user),
+        }
+    };
+    local *getSubscriptionGroup = sub {
+        if (my $tg = $ticket->groupId) {
+            my $g  = WebGUI::Group->new($session, 'new');
+            $g->isAdHocMailGroup(1);
+            $g->deleteGroups([3]);
+            $g->addGroups([$group->getId, $tg]);
+            return $g;
+        }
+        return $group;
+    };
+
+    $self->SUPER::notifySubscribers(
+        {   subject     => $subj,
+            from        => $addr,
+            replyTo     => $addr,
+            listAddress => $addr,
+            inReplyTo   => "$tid.$prev\@$aid",
+        }
+    );
+}
+
 sub www_ticket {
     my $self    = shift;
     return $self->forbidden unless $self->canView;
@@ -480,6 +536,30 @@ sub www_ticket {
     return $self->text($id);
 }
 
+sub errorMail {
+    my ($self, $email, $error) = @_;
+    my $msg   = $email->message;
+    my $reply = $self->reply($msg);
+    my $body  = $self->i18n->get($error) . "\n";
+
+    if (my $quote = $email->body) {
+        $quote =~ s/^/> /mg;
+        $body .= "\n$msg->{from} wrote:\n$quote";
+    }
+
+    my $entity = $reply->getMimeEntity;
+    $entity->parts([]);
+    $entity->attach(
+        Type        => 'text/plain',
+        Charset     => 'UTF-8',
+        Encoding    => 'quoted-printable',
+        Data        => encode('utf8', $body),
+    );
+    $entity->make_singlepart;
+
+    $reply->queue;
+}
+
 sub onMail {
     my ($self, $message) = @_;
     my $session = $self->session;
@@ -489,14 +569,17 @@ sub onMail {
         message => $message,
     );
 
-    my $body = $message->body || return;
-    my $user = $message->user || return;
+    my $e = sub { $self->errorMail($message, shift) };
+
+    my $body = $message->body or return $e->('onMail no content');
+
+    my $user = $message->user;
     my $old  = $session->user;
 
     my $guard = guard { $session->user({user => $old}) };
     $session->user({ user => $user });
 
-    return unless $self->canReport;
+    return $e->('onMail forbidden') unless $self->canReport;
 
     my $ticket = $self->getTicket($message->ticketId);
 

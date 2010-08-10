@@ -114,6 +114,9 @@ sub postComment {
     if ($self->has_comments) {
         $self->_addComment($comment);
     }
+    if ($self->has_commentCount) {
+        $self->_incCount;
+    }
     $self->notifySubscribers();
 }
 
@@ -144,9 +147,10 @@ has groupId => (
 );
 
 has subscribers => (
-    is         => 'ro',
+    is         => 'bare',
+    reader     => 'getSubscriptionGroup',
+    writer     => '_setSubscriptionGroup',
     isa        => 'Maybe[WebGUI::Group]',
-    writer     => '_set_subscribers',
     lazy_build => 1,
 );
 
@@ -181,7 +185,7 @@ sub subscribe {
         name     => "Ticket $hdid-$id",
         setGroup => sub {
             my $g = shift;
-            $self->_set_subscribers($g);
+            $self->_setSubscriptionGroup($g);
             $self->_setGroupId($g->getId);
             $self->save();
         }
@@ -210,14 +214,50 @@ has comments => (
     isa        => 'ArrayRef[WebGUI::Helpdesk2::Comment]',
     lazy_build => 1,
     handles    => {
-        _addComment => 'push',
-        getComment  => 'get',
-        comments    => 'elements',
+        _addComment        => 'push',
+        getComment         => 'get',
+        comments           => 'elements',
+        _countCommentArray => 'count',
     },
 );
 
 sub _build_comments {
     WebGUI::Helpdesk2::Comment->loadTicketComments(shift);
+}
+
+has commentCount => (
+    is        => 'ro',
+    isa       => 'Int',
+    init_arg  => undef,
+    traits    => ['Counter'],
+    lazy      => 1,
+    default   => sub { shift->_build_commentCount },
+    predicate => 'has_commentCount',
+    handles   => {
+        '_setCommentCount' => 'set',
+        '_incCount' => 'inc',
+    }
+);
+
+sub _build_commentCount {
+    my $self = shift;
+    if ($self->has_comments) {
+        return $self->_countCommentArray;
+    }
+    else {
+        my $sql = q{ 
+            select count(*)
+            from Helpdesk2_Comment
+            where helpdesk   = ? 
+                  and ticket = ?
+        };
+        $self->session->db->quickScalar(
+            $sql, [
+                $self->helpdesk->getId,
+                $self->id,
+            ]
+        );
+    }
 }
 
 sub render {
@@ -247,7 +287,7 @@ sub render {
     $hash{comments}   = [ map { $_->render } $self->comments ];
     $hash{owner}      = $self->isOwner;
 
-    if (my $group = $self->subscribers) {
+    if (my $group = $self->getSubscriptionGroup) {
         $hash{subscribed} = $group->hasUser($self->session->user);
     }
 
@@ -312,6 +352,8 @@ sub delete {
 }
 
 sub notifySubscribers {
+    my $self = shift;
+    $self->helpdesk->notifySubscribers($self);
 }
 
 __PACKAGE__->meta->make_immutable;

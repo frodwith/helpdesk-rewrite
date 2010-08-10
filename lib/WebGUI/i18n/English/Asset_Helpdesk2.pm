@@ -3,6 +3,14 @@ package WebGUI::i18n::English::Asset_Helpdesk2;
 use strict;
 
 our $I18N = {
+    'onMail no content' => {
+        message     => q{Your message did not contain any content this helpdesk could understand.},
+        lastUpdated => 1281368272,
+    },
+    'onMail forbidden' => {
+        message     => q{You do not have sufficient permission to post on this helpdesk.},
+        lastUpdated => 1281368272,
+    },
     'assetName' => {
         message     => q{Helpdesk 2},
         lastUpdated => 1278540767,

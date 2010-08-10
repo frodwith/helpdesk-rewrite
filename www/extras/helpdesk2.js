@@ -1,4 +1,4 @@
-/*global YUI, $p, _, document */
+/*global YUI, $p, _, document, helpdesk2, window, escape */
 
 YUI({
     groups: {
@@ -37,28 +37,6 @@ YUI({
 'history', 'node', 'tabview', 'gallery-overlay-modal', 'overlay',
 'querystring-stringify-simple', 'io-upload-iframe', 'io', 'json', function (Y) {
 
-    function appUrl(params) {
-        var url = helpdesk2.app + '?';
-        _.each(params, function (v, k) {
-            url += escape(k) + '=' + escape(v) + '&';
-        });
-        return url;
-    }
-
-    _.mixin({
-        mapFn: function (map) {
-            return function (key) {
-                return map[key];
-            };
-        },
-        keyFn: function (key) {
-            return function (map) {
-                return map[key];
-            };
-        }
-    });
-
-
     // Pure likes to work on in-dom objects, so this is a thin wrapper that
     // takes an arbitrary Y.Node-able object as its template and returns us an
     // out-of-dom Node.  The template node will not be altered.
@@ -91,8 +69,8 @@ YUI({
         return function (k) {
             return function (a) {
                 return a[name][k];
-            }
-        }
+            };
+        };
     }
 
     // This was taking forever for large datasets (like all the user info),
@@ -153,7 +131,7 @@ YUI({
         rule: function () {
             return {
                 type: this.type,
-                arguments: this.arguments()
+                args: this.args()
             };
         }
     },
@@ -169,7 +147,7 @@ YUI({
         setValue: function () {
             this.complete.set('selectedUsers', this.value);
         },
-        arguments: function () {
+        args: function () {
             return this.complete.get('selectedUsers');
         }
     }),
@@ -189,14 +167,14 @@ YUI({
                 });
             });
         },
-        arguments: function (r) {
+        args: function (r) {
             return _(this.node.all('option')._nodes).chain()
                 .filter(function (e) {
                     return e.selected;
                 }).map(function (e) {
                     return e.value;
                 }).value();
-        },
+        }
     }),
     DateRangeFilter = Filter.extend({
         inputs: function () {
@@ -233,7 +211,7 @@ YUI({
             cal.select(Date.parse(str));
             cal.render();
         },
-        arguments: function () {
+        args: function () {
             return {
                 from : this.getDate('from'),
                 to   :  this.getDate('to')
@@ -264,7 +242,11 @@ YUI({
                         '@class+'      : function (a) {
                             return a.pos % 2 ? ' odd' : ' even';
                         },
-                        '.body'        : 'c.body',
+                        '.body'        : function (a) {
+                            return a.item.body
+                                .replace(/\n/g, '<br>')
+                                .replace(/ {2}/g, ' &nbsp;');
+                        },
                         '.status'      : status(item('status')),
                         '.attachments' : {
                             'a<-c.attachments' : {
@@ -292,7 +274,7 @@ YUI({
                 '.assignedTo@href' : 'assignedTo.profile',
                 '.assignedOn'      : 'assignedOn',
                 '.assignedBy'      : 'assignedBy.fullname',
-                '.assignedBy@href' : 'assignedBy.profile',
+                '.assignedBy@href' : 'assignedBy.profile'
             };
         },
 
@@ -317,7 +299,7 @@ YUI({
                 centered  : true
             }).plug(Y.Plugin.OverlayModal),
             close    = function () {
-                keylisten.detach()
+                keylisten.detach();
                 try { 
                     // This sometimes breaks
                     overlay.destroy(); 
@@ -411,7 +393,7 @@ YUI({
                 mkButton(node.one('.reply'))
                     .on('click', _.bind(self.reply, self));
 
-                function makeAttacher(node) {
+                var makeAttacher = function (node) {
                     var handle = node.one('input').on('change', function (e) {
                         var box = this.get('parentNode'),
                         remover = Y.Node.create('<a>x</a>'),
@@ -426,7 +408,7 @@ YUI({
                         makeAttacher(next);
                         mkButton(remover).on('click', _.bind(box.remove, box));
                     });
-                }
+                };
                 makeAttacher(node.one('.attach-box'));
             }
             else {
@@ -508,10 +490,12 @@ YUI({
             this.updating = 1;
 
             var self      = this,
-            currentlyOpen = _.clone(self.tabs);
+            currentlyOpen = _.clone(self.tabs),
+            filter;
 
             state = Y.JSON.parse(state);
-            if (self.filter = state.filter) {
+            filter = self.filter = state.filter;
+            if (filter) {
                 self.clearFilters();
                 _.each(self.filter.rules, _.bind(self.addRule, self));
                 Y.one(self.filterDom)
@@ -546,11 +530,11 @@ YUI({
 
         addComment: function (id, comment, callback) {
             var self = this;
-            Y.io(self.commentUrl(id), {
+            Y.io(self.appUrl({func: 'comment', ticketId: id}), {
                 method: 'POST',
                 form: { 
                     id     : comment,
-                    upload : true,
+                    upload : true
                 },
                 on: { 
                     complete: function() {
@@ -563,6 +547,10 @@ YUI({
 
         select: function (tab) {
             this.tabview.selectChild(tab.get('index'));
+        },
+
+        ticketUrl: function (id) {
+            return this.appUrl({func: 'ticket', ticketId: id});
         },
 
         createTicket: function (form, callback) {
@@ -609,7 +597,7 @@ YUI({
                 return function (cell, record, column) {
                     var d = record._oData,
                     name  = d[field + '.fullname'],
-                    url   = d[field + '.profile'],
+                    url   = d[field + '.profile'];
                     cell  = Y.one(cell);
 
                     if (name) {
@@ -624,7 +612,9 @@ YUI({
             }
 
             fmt = {
-                status : setText(_.mapFn(self.status)),
+                status : setText(function (k) { 
+                    return self.status[k]; 
+                }),
                 date   : 'date',
                 link   : function (cell, record, column, text) {
                     var a      = Y.Node.create('<a>' + text + '</a>'), 
@@ -706,14 +696,17 @@ YUI({
             }
         },
         addRule: function (r) {
-            var self = this, id = Y.guid(), row, dom = Y.one(self.filterDom), 
+            var self = this, 
+            id       = Y.guid(), 
+            dom      = Y.one(self.filterDom), 
+            row, rule, 
             p = {
                 type   : r.type,
                 label  : Y.one(
                 _.detect(dom.all('.type option')._nodes, function (o) {
                     return o.value === r.type;
                 })).get('text'),
-                value  : r.arguments,
+                value  : r.args,
                 remove : function () {
                     delete self.rules[id];
                     self.centerFilters();
@@ -791,7 +784,7 @@ YUI({
             this.ticketsource.sendRequest(request, {
                 success  : table.onDataReturnInitializeTable,
                 scope    : table,
-                argument : state,
+                argument : state
             });
         },
         toggleSubscription: function (id, callback) {
@@ -799,7 +792,7 @@ YUI({
             if (id) {
                 data.ticketId = id;
             }
-            Y.io(this.subscribeUrl, {
+            Y.io(this.appUrl({func: 'toggleSubscription'}), {
                 method: 'POST',
                 data: data,
                 on: {
@@ -844,7 +837,7 @@ YUI({
                 Y.one(self.subscribeButton).one('button')
                     .set('text', self.i18n(
                         self.subscribed ? 'Unsubscribe' : 'Subscribe'
-                     ))
+                     ));
             });
 
             mkButton(self.subscribeButton).on('click', function () {
@@ -927,14 +920,16 @@ YUI({
             return source;
         },
         extend: function (args) {
-            var self = Y.Object(this), node;
+            var self = Y.Object(this);
             _.extend(self, args);
             Y.augment(self, Y.EventTarget);
             self.usernames    = {};
             self.rules        = {};
             self.tabs         = {};
-            self.usersource   = self.buildUsersource(args.usersource);
-            self.ticketsource = self.buildTicketsource(args.ticketsource);
+            self.usersource   = 
+                self.buildUsersource(self.appUrl({func: 'userSource'}));
+            self.ticketsource 
+                = self.buildTicketsource(self.appUrl({func: 'ticketSource'}));
             self.mainTab      = new Y.Tab({
                 label: 'Tickets', 
                 panelNode: Y.one(args.mainTab)
@@ -946,7 +941,7 @@ YUI({
             self.publish('helpdesk:ready', { fireOnce : true });
             self.publish('helpdesk:config', { fireOnce : true });
 
-            Y.io(self.configUrl, {
+            Y.io(self.appUrl({func: 'config'}), {
                 on: {
                     complete: function (id, r) {
                         r = Y.JSON.parse(r.responseText);
@@ -979,6 +974,7 @@ YUI({
             });
 
             self.registerHistory();
+            self.on('helpdesk:ready', _.bind(self.render, self));
 
             return self;
         },
@@ -1004,7 +1000,7 @@ YUI({
         },
 
         userData: function (id, fn) {
-            Y.io(this.userUrl(id), {
+            Y.io(this.appUrl({func: 'user', userId: id}), {
                 on: {
                     complete: function (i, r) {
                         fn(Y.JSON.parse(r.responseText));
@@ -1021,7 +1017,7 @@ YUI({
         
         registerHistory: function() {
             var self = this,
-            initial  = Y.History.getBookmarkedState('helpdesk'),
+            initial  = Y.History.getBookmarkedState(self.assetId),
             update   = function (state) {
                 self.on('helpdesk:config', function () {
                     self.updateFromState(state);
@@ -1035,13 +1031,21 @@ YUI({
                 initial = '{open: null, tickets: []}';
             }
             Y.History.register('helpdesk', initial)
-                .on('history:moduleStateChange', update)
+                .on('history:moduleStateChange', update);
+        },
+
+        appUrl: function(params) {
+            var url = this.app + '?';
+            _.each(params, function (v, k) {
+                url += escape(k) + '=' + escape(v) + '&';
+            });
+            return url;
         },
 
         openTab: function (id, select) {
             var self = this,
             tab = self.tabs[id],
-            template, closer;
+            closer;
 
             if (!tab) {
                 tab = self.tabs[id] = new Y.Tab({
@@ -1066,6 +1070,8 @@ YUI({
         }
     },
     helpdesk = Helpdesk.extend({
+        app             : helpdesk2.app,
+        assetId         : 'helpdesk',
         root            : '#helpdesk',
         ticketView      : '#ticket-view-template',
         ticketEdit      : '#ticket-edit-template',
@@ -1074,26 +1080,10 @@ YUI({
         newTicket       : '#new-ticket',
         filterButton    : '#filter',
         subscribeButton : '#subscribe',
-        share           : '#share-this',
-
-        configUrl       : appUrl({func: 'config'}),
-        ticketsource    : appUrl({func: 'ticketSource'}),
-        usersource      : appUrl({func: 'userSource'}),
-        subscribeUrl    : appUrl({func: 'toggleSubscription'}),
-
-        userUrl: function(id) {
-            return appUrl({func: 'user', userId: id});
-        },
-        ticketUrl: function (id) {
-            return appUrl({func: 'ticket', ticketId: id});
-        },
-        commentUrl: function (id) {
-            return appUrl({func: 'comment', ticketId: id});
-        }
+        share           : '#share-this'
     });
 
     Y.on('domready', function () {
         Y.History.initialize('#yui-history-field', '#yui-history-iframe');
     });
-    helpdesk.on('helpdesk:ready', _.bind(helpdesk.render, helpdesk));
 });

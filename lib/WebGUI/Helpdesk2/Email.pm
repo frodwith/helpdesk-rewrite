@@ -2,9 +2,9 @@ package WebGUI::Helpdesk2::Email;
 
 use Moose;
 use WebGUI::HTML;
-use HTML::Parser;
-use namespace::clean -except => 'meta';
 use WebGUI::Utility;
+
+use namespace::clean -except => 'meta';
 
 has session => (
     is       => 'ro',
@@ -25,82 +25,6 @@ has body => (
     lazy_build => 1,
 );
 
-sub scrubText {
-    WebGUI::HTML::format(WebGUI::HTML::filter(shift, 'all'), 'text');
-}
-
-# Note: This is cribbed from Helpdesk v1's GetMail workflow. I don't want to
-# change the semantics and I want even less to try to comprehend it. I take no
-# responsibility for anything inside the following curly braces. -frodwith
-
-sub scrubHTML {
-	my $html = shift;
-	my $newHtml  = "";
-	my $skip     = 0;
-    my $checkTag = "";
-    my @skipTags = ("html","body","meta");
-
-	my $startTagHandler = sub {
-		my($tag, $num,$attr,$text) = @_;
-        #print "Start Tag: $tag   Id: ".$attr->{id}."\n";
-        if($checkTag eq "" && (
-            $tag eq "head"
-            || $tag eq "blockquote"
-            || ($tag eq "hr" && $attr->{id} eq "EC_stopSpelling")  #Hotmail / MSN
-            || ($tag eq "div" && $attr->{class} eq "gmail_quote")  #Gmail
-            || ($tag eq "table" && $attr->{id} eq "hd_notification") #Original Posts (responses)
-            || ($tag eq "table" && $attr->{border} == 0 && $attr->{cellspacing} == 2 && $attr->{cellpadding} == 3) #From Collab Systems
-            ) 
-        ) {
-            $skip = 1;
-            $checkTag  = $tag;
-            return;
-        }
-        #Start counting nested tags
-        $skip++ if($tag eq $checkTag);
-        
-        return if ($skip);
-        return if (isIn($tag,@skipTags));
-        
-        $newHtml .= $text;
-	};
-    
-    my $endTagHandler = sub {
-        my ($tag, $num, $text) = @_;
-        #print "End Tag: $tag \n";
-        return if (isIn($tag,@skipTags));
-        if($skip == 0) {
-            $newHtml .= $text;
-            return;
-        }
-        #Decrement the nested tag counter
-        $skip-- if($tag eq $checkTag);
-        #Unset checktag if the counter hits zero
-        $checkTag = "" if($skip == 0);
-    };
-
-	my $textHandler = sub {
-        my $text = shift;
-		return if($skip);
-        if ($text =~ /\S+/) {
-            $newHtml .= $text;
-		}
-	};
-
-	HTML::Parser->new(
-        api_version     => 3,
-		handlers        => [
-            start => [$startTagHandler, "tagname, '+1', attr, text"],
-			end   => [$endTagHandler, "tagname, '-1', text"],
-			text  => [$textHandler, "text"],
-		],
-		marked_sections => 1,
-	)->parse($html);
-    
-    $newHtml = WebGUI::HTML::cleanSegment($newHtml);    
-	return $newHtml;
-}
-
 sub isBodyContent {
     my $part = shift;
     return !$part->{filename} && $part->{type} =~ m<^text/(?:plain|html)>;
@@ -110,9 +34,9 @@ sub _build_body {
     my $self  = shift;
 	
     return join '', map { 
-        my ($type, $text) = @{$_}{'type', 'content'};
-        $type =~ /plain/ ? scrubText($text) : scrubHTML($text);
-    } grep { isBodyContent($_) } @{ $self->message->{parts} }
+        my $c = $_->{content};
+        $_->{type} =~ /html/ ? WebGUI::HTML::html2text($c) : $c;
+    } grep { isBodyContent($_) } @{ $self->message->{parts} };
 }
 
 has user => (
@@ -135,7 +59,7 @@ has ticketId => (
     isa      => 'Maybe[Str]',
     init_arg => undef,
     lazy     => 1,
-    default  => sub { shift->message->{inReplyTo} =~ /^(\d+)!/ && $1 }
+    default  => sub { $_[0]->message->{inReplyTo} =~ /^<(\d+)\.\d+\@/ && $1 }
 );
 
 has subject => (
