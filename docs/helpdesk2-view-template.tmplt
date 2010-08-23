@@ -1,0 +1,250 @@
+==== Template ================================================================
+ 
+Asset ID  : pBHarUP6ENx5EAbJ3c98uw
+Menu Title  : Helpdesk2 View Template
+Parent      : home/help-
+Title       : Helpdesk2 View Template
+URL         : home/help-/helpdesk2-view-template
+==== extraHeadTags ===========================================================
+~
+==== synopsis ================================================================
+~
+==== template ================================================================
+[% IF session_var_adminOn %]
+    [% controls %]
+[% END %]
+<div class='main-tab yui3-tab-panel'>
+    <div>
+        <button class='new-ticket-button i18n'>Open New Ticket</button>
+        <button class='subscribe-button i18n'>Subscribe</button>
+        <button class='filter-button i18n'>Filter Tickets</button>
+    </div>
+    <span class='rules'></span>
+    <div class='share-this'><span class='i18n'>Share this</span>:
+        <a class='i18n' href='.'>link</a>
+    </div>
+    <div class='datatable'>
+    </div>
+</div>
+<form class='ticket-edit template modal-dialog yui3-skin-sam yui-skin-sam'>
+    <div class='yui-widget-hd'>
+        <h1>Edit Ticket</h1>
+        <button class='close'>x</button>
+    </div>
+    <table class='yui-widget-bd'>
+        <tr>
+            <td class='label'><span class='i18n'>Title</span>:</td>
+            <td><input name='title' type='text' /></td>
+        </tr>
+        <tr class='new-comment'>
+            <td class='label'><span class='i18n'>Comment</span>:</td>
+            <td>
+                <textarea name='comment'></textarea>
+                <div class='attach-box'>
+                    <input name='attachment'
+                           type='file' />
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td class='label'><span class='i18n'>Visibility</span>:</td>
+            <td class='visibility'></td>
+        </tr>
+        <tr>
+            <td class='label'><span class='i18n'>Severity</span>:</td>
+            <td><select name='severity'></select></td>
+        </tr>
+        <tr>
+            <td class='label'><span class='i18n'>Keywords</span>:</td>
+            <td><input name='keywords' type='text' /><br />
+                Separated with commas
+            </td>
+        </tr>
+        <tr>
+            <td class='label'><span class='i18n'>Assigned To</span>:
+            </td>
+            <td><div><input name='assignedTo' /></div></td>
+        </tr>
+        <tr>
+            <td class='label'><span class='i18n'>WebGUI Version</span>:
+            </td>
+            <td><input name='webgui' type='text' /></td>
+        </tr>
+        <tr>
+            <td class='label'><span class='i18n'>WRE Version</span>:
+            </td>
+            <td><input name='wre' type='text' /></td>
+        </tr>
+        <tr>
+            <td class='label'><span class='i18n'>OS</span>:</td>
+            <td><input name='os' type='text' /></td>
+        </tr>
+    </table>
+    <div class='yui-widget-ft'>
+        <button class='save i18n'>Save</button>
+        <button class='cancel i18n'>Cancel</button>
+        <div class='footer'></div>
+    </div>
+</form>
+<div class='ticket-view template ticket'>
+    <div class='container'>
+        <div class='left-side'>
+            <h1 class='title-area'>
+                [<span class='id'></span>]
+                <span class='title'></span>
+            </h1>
+            <button class='subscribe i18n'>Subscribe</button>
+            <ul class='comments'>
+                <li>
+                    <div class='header'>
+                        <span class='timestamp'></span>
+                        <a class='author'></a>
+                    </div>
+                    <div class='body'></div>
+                    <div class='status-change'>
+                       &mdash;
+                        <span class='i18n'>Status changed to</span>
+                        "<span class='status'></span>"
+                    </div>
+                    <ul class='attachments'>
+                        <li><a></a></li>
+                    </ul>
+                </li>
+            </ul>
+            <form class='new-comment'>
+                <textarea name='body'></textarea>
+                <table>
+                    <tr>
+                        <td class='name'>
+                            <span class='i18n'>New Status</span>:
+                        </td>
+                        <td><select name='status'></td>
+                    </tr>
+                    <tr><td class='name'><span
+                            class='i18n'>Add Attachment</span>:</td>
+                        <td>
+                            <div class='attach-box'>
+                                <input name='attachment'
+                                       type='file' />
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+                <button class='reply i18n'>Reply</button>
+            </form>
+        </div>
+        <div class='right-side'>
+            <div class='top'>
+            <div class='status'></div>
+            <button class='edit-button i18n'>Edit Ticket</button>
+        </div>
+            <div class='visibility'></div>
+            <div class='info'>
+                <div class='name i18n'>Severity</div>
+                <div class='value severity'></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>Keywords</div>
+                <div class='value keywords'></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>URL</div>
+                <div class='value'><a class='url'>link</a></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>WebGUI Version</div>
+                <div class='value webgui'></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>WRE Version</div>
+                <div class='value wre'></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>OS</div>
+                <div class='value os'></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>Assigned To</div>
+                <div class='value'><a class='assignedTo'></a></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>Assigned On</div>
+                <div class='value assignedOn'></div>
+            </div>
+            <div class='info'>
+                <div class='name i18n'>Assigned By</div>
+                <div class='value'><a class='assignedBy'></a></div>
+            </div>
+        </div>
+    </div>
+    <div class='footer'></div>
+</div>
+<div class='filter-dialog modal-dialog yui-skin-sam yui3-skin-sam'>
+    <div class='yui-widget-hd'>
+        <h1 class='i18n'>Filter Tickets</h1>
+        <button class='close'>x</button>
+        <div class='footer'></div>
+    </div>
+    <div class='yui-widget-bd'>
+        <span class='i18n'>Match</span>
+        <select class='conjunction'>
+            <option class='i18n' value='any'>Any</option>
+            <option class='i18n' value='all'>All</option>
+        </select>
+        <span class='i18n'>of the following rules</span>:
+        <table class='active-filters'>
+            <tr class='addrow'>
+                <td class='btn-cell'></td>
+                <td class='label-cell'>
+                    <select class='type'>
+                        <option><span class='i18n'>Add New</span>...</option>
+                        <option class='i18n'
+                                value='status'>Ticket Status</option>
+                        <option class='i18n'
+                                value='assignedTo'>Assigned To</option>
+                        <option class='i18n'
+                                value='openedBy'>Opened By</option>
+                        <option class='i18n'
+                                value='openedOn'>Opened On</option>
+                        <option class='i18n'
+                                value='lastReply'>Last Reply</option>
+                    </select>
+                </td>
+                <td></td>
+            </tr>
+        </table>
+    </div>
+    <div class='yui-widget-ft'>
+        <button class='search i18n'>Search</button>
+        <button class='reset i18n'>Reset</button>
+        <div class='footer'></div>
+    </div>
+</div>
+
+
+
+
+
+==== Properties ==============================================================
+ 
+display: 
+  isHidden: 1
+  newWindow: 0
+meta: 
+  inheritUrlFromParent: 0
+  isExportable: 1
+  isPackage: 0
+  isPrototype: 0
+  usePackedHeadTags: 0
+properties: 
+  attachmentsJson: "[]"
+  namespace: Helpdesk2/view
+  parser: WebGUI::Asset::Template::TemplateToolkit
+  showInForms: 1
+  storageIdExample: ~
+  usePacked: 0
+security: 
+  groupIdEdit: 3
+  groupIdView: 7
+  ownerUserId: 3
+

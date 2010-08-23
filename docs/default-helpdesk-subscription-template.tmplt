@@ -1,0 +1,47 @@
+==== Template ================================================================
+ 
+Asset ID  : EkhtMV_rmccG9whZjOZ_GQ
+Menu Title  : Default Helpdesk Subscription Template
+Parent      : home/help-
+Title       : Default Helpdesk Subscription Template
+URL         : home/help-/default-helpdesk-subscription-template
+==== extraHeadTags ===========================================================
+~
+==== synopsis ================================================================
+~
+==== template ================================================================
+<p>
+[% commentor.fullname %] has posted to one of your subscriptions.
+<a href="[% ticket.url %]">Click here</a> to view the ticket or copy the
+following into your browser's address bar: [% ticket.url %]
+</p>
+
+Comments so far:
+[% FOREACH c IN ticket.comments %]
+<p>[% c.author.fullname %]: [% c.body %]</p>
+[% END %]
+
+
+==== Properties ==============================================================
+ 
+display: 
+  isHidden: 1
+  newWindow: 0
+meta: 
+  inheritUrlFromParent: 0
+  isExportable: 1
+  isPackage: 0
+  isPrototype: 0
+  usePackedHeadTags: 0
+properties: 
+  attachmentsJson: "[]"
+  namespace: Helpdesk2/email
+  parser: WebGUI::Asset::Template::TemplateToolkit
+  showInForms: 1
+  storageIdExample: ~
+  usePacked: 0
+security: 
+  groupIdEdit: 3
+  groupIdView: 7
+  ownerUserId: 3
+
