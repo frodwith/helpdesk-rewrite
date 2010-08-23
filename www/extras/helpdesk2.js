@@ -1,9 +1,22 @@
-/*global YUI, $p, _, document, helpdesk2, window, escape */
+/*global document, getWebguiProperty, YUI, $p, _, window, escape */
+
+var Helpdesk2 = {
+    queue: [],
+    create: false,
+    register: function (asset) {
+        if (this.create) {
+            this.create(asset);
+        }
+        else {
+            this.queue.push(asset);
+        }
+    }
+};
 
 YUI({
     groups: {
         local: {
-            base: helpdesk2.base,
+            base: getWebguiProperty('extrasURL') + 'helpdesk2/',
             modules: {
                 hd2css       : {
                     path: 'helpdesk2.css',
@@ -44,7 +57,7 @@ YUI({
         var container, rendered;
 
         template = Y.one(template).cloneNode(true);
-        template.removeAttribute('id');
+        template.removeClass('template');
 
         container = Y.Node.create('<div>');
         container.append(template);
@@ -55,6 +68,12 @@ YUI({
         rendered.remove();
 
         return rendered;
+    }
+
+    function propClass(get) {
+        return function (a) {
+            return ' ' + get(a);
+        }
     }
 
     function lookup(map) {
@@ -76,13 +95,15 @@ YUI({
     // This was taking forever for large datasets (like all the user info),
     // so it's been harshly optimized.
     function fillSelect(select, o) {
-        var k, str = '';
+        var k, opt, sel = Y.Node.getDOMNode(select);
         for (k in o) {
             if (o.hasOwnProperty(k)) {
-                str += '<option value="' + k + '">' + o[k] + '</option>';
+                opt = document.createElement('option');
+                opt.value = k;
+                opt.appendChild(document.createTextNode(o[k]));
+                sel.appendChild(opt);
             }
         }
-        Y.Node.getDOMNode(select).innerHTML = str;
     }
 
     function ticketResponse(callback) {
@@ -96,11 +117,27 @@ YUI({
     item      = aprop('item'),
     context   = aprop('context'),
     mkButton  = function (thing) {
-        var node = Y.Node.getDOMNode(Y.one(thing)),
-        classes  = node.className,
-        widget   = new YAHOO.widget.Button(node);
+        var el   = Y.Node.getDOMNode(thing),
+        classes  = el.className,
+        widget   = new YAHOO.widget.Button(el);
         widget.addClass(classes);
         return widget;
+    },
+    makeAttacher = function (node) {
+        var handle = node.one('input').on('change', function (e) {
+            var box = this.get('parentNode'),
+            remover = Y.Node.create('<a>x</a>'),
+            // file input clones behave inconsistently across browsers
+            next    = box.cloneNode(false),
+            name    = box.one('input').getAttribute('name');
+
+            next.append('<input type="file" name="' + name + '">');
+            handle.detach();
+            box.appendChild(remover);
+            box.get('parentNode').appendChild(next);
+            makeAttacher(next);
+            mkButton(remover).on('click', _.bind(box.remove, box));
+        });
     },
 
     Filter = {
@@ -127,7 +164,6 @@ YUI({
             }
             return this.node;
         },
-            
         rule: function () {
             return {
                 type: this.type,
@@ -146,6 +182,12 @@ YUI({
         },
         setValue: function () {
             this.complete.set('selectedUsers', this.value);
+        },
+        stringify: function () {
+            var a = _.pluck(this.args(), 'fullname');
+            return a.length > 1 ?
+                '[' + a.join(', ') + ']' :
+                a[0];
         },
         args: function () {
             return this.complete.get('selectedUsers');
@@ -166,6 +208,12 @@ YUI({
                     }
                 });
             });
+        },
+        stringify: function () {
+            var a = this.args();
+            return a.length > 1 ?
+                '[' + a.join(', ') + ']' :
+                a[0];
         },
         args: function (r) {
             return _(this.node.all('option')._nodes).chain()
@@ -211,6 +259,10 @@ YUI({
             cal.select(Date.parse(str));
             cal.render();
         },
+        stringify: function () {
+            return (this.getDate('from') || 'forever') + ' - ' +
+                (this.getDate('to') || 'forever');
+        },
         args: function () {
             return {
                 from : this.getDate('from'),
@@ -247,8 +299,8 @@ YUI({
                                 .replace(/\n/g, '<br>')
                                 .replace(/ {2}/g, ' &nbsp;');
                         },
-                        '.status'      : status(item('status')),
-                        '.attachments' : {
+                        '.status'        : status(item('status')),
+                        '.attachments'   : {
                             'a<-c.attachments' : {
                                 'li a@href' : 'a.url',
                                 'li a'      : 'a.name'
@@ -257,12 +309,11 @@ YUI({
                     }
                 },
 
-                '.right-side .status' : status(context('status')),
+                '.right-side .status'        : status(context('status')),
+                '.right-side .status@class+' : propClass(context('status')),
 
                 '.visibility' : lookup(h.visibility)(context('visibility')),
-                '.visibility@class+' : function (a) {
-                    return ' ' + a.context.visibility;
-                },
+                '.visibility@class+' : propClass(context('visibility')),
 
                 '.severity'        : lookup(h.severity)(context('severity')),
                 '.keywords'        : 'keywords',
@@ -285,7 +336,7 @@ YUI({
             );
         },
 
-        edit: function (save) {
+        edit: function (isNew, save) {
             var self = this, keylisten,
             data     = self.data,
             helpdesk = self.helpdesk,
@@ -316,12 +367,26 @@ YUI({
 
             form.one('[name=severity]').set('value', data.severity);
 
-            form.all('input').each(function () {
+            form.all('input[type=text]').each(function () {
+                var original = this.get('value');
+                this.on('focus', _.bind(this.addClass, this, 'changed'));
+                this.on('blur', function () {
+                    if (this.get('value') === original) {
+                        this.removeClass('changed');
+                    }
+                }, this);
                 this.on('change', _.bind(this.addClass, this, 'changed'));
             });
 
             mkButton(form.one('.close')).on('click', close);
             mkButton(form.one('.cancel')).on('click', close);
+
+            if (isNew) {
+                makeAttacher(form.one('.attach-box'));
+            }
+            else {
+                form.one('.new-comment').remove();
+            }
 
             save = _.bind(save, null, form, close);
 
@@ -365,11 +430,22 @@ YUI({
             r            = pure(template, self.data, self.viewDirectives()),
             node         = self.node = Y.Node.create('<div>').append(r),
             editButton   = node.one('.edit-button'),
-            status;
+            status, lastStatus;
+
+            // remove duplicate 'status changed' messages
+            node.all('.status-change').each(function (ch) {
+                var text = ch.one('.status').get('text');
+                if (text === lastStatus) {
+                    ch.remove();
+                }
+                else {
+                    lastStatus = text;
+                }
+            });
 
             if (helpdesk.staff || self.data.owner) {
                 mkButton(editButton).on('click', function () {
-                    self.edit(function (form, done) {
+                    self.edit(false, function (form, done) {
                         helpdesk.saveTicket(self.data.id, form, 
                             function (ticket) {
                                 self.update(ticket);
@@ -393,22 +469,6 @@ YUI({
                 mkButton(node.one('.reply'))
                     .on('click', _.bind(self.reply, self));
 
-                var makeAttacher = function (node) {
-                    var handle = node.one('input').on('change', function (e) {
-                        var box = this.get('parentNode'),
-                        remover = Y.Node.create('<a>x</a>'),
-                        // file input clones behave inconsistently across browsers
-                        next    = box.cloneNode(false),
-                        name    = box.one('input').getAttribute('name');
-
-                        next.append('<input type="file" name="' + name + '">');
-                        handle.detach();
-                        box.appendChild(remover);
-                        box.get('parentNode').appendChild(next);
-                        makeAttacher(next);
-                        mkButton(remover).on('click', _.bind(box.remove, box));
-                    });
-                };
                 makeAttacher(node.one('.attach-box'));
             }
             else {
@@ -450,7 +510,8 @@ YUI({
             'waiting'      : 'Waiting On External',
             'feedback'     : 'Feedback Requested',
             'confirmed'    : 'Confirmed',
-            'resolved'     : 'Resolved'
+            'resolved'     : 'Resolved',
+            'closed'       : 'Closed'
         },
 
         visibility: {
@@ -498,9 +559,7 @@ YUI({
             if (filter) {
                 self.clearFilters();
                 _.each(self.filter.rules, _.bind(self.addRule, self));
-                Y.one(self.filterDom)
-                    .one('.conjunction')
-                    .set('value', filter.match);
+                self.conjunction(filter.match);
             }
             self.refresh();
 
@@ -522,10 +581,35 @@ YUI({
             if (self.closeDialog) {
                 self.closeDialog();
             }
-            Y.one(self.share).one('a')
-                .setAttribute('href', window.location);
+
+            self.ruleDom.set('text', self.ruleString());
+
+            self.share.setAttribute('href', window.location);
 
             delete this.updating;
+        },
+
+        conjunction: function (val) {
+            var node = this.filterDom.one('.conjunction');
+            if (val) {
+                node.set('value', val);
+            }
+            return node.get('value');
+        },
+
+        ruleString: function () {
+            var n = this.typeNames;
+            if (_.values(this.rules).length < 1) {
+                return 'Showing all tickets';
+            }
+            return 'Showing ' +
+                this.conjunction() + ' of: ' +
+                _.map(this.rules, function (v, k) {
+                    var name = _(v.type.split('')).chain().map(function (c) {
+                        return c.match(/[A-Z]/) ? ' ' + c.toLowerCase() : c;
+                    }).value().join('');
+                    return name + ': ' + v.stringify();
+                }).join(', ')
         },
 
         addComment: function (id, comment, callback) {
@@ -557,7 +641,10 @@ YUI({
             var self = this;
             Y.io(self.ticketUrl('new'), {
                 method: 'POST',
-                form: { id: form },
+                form: { 
+                    id: form,  
+                    upload: true
+                },
                 on: { 
                     complete: function (i, r) {
                         var id = r.responseText;
@@ -698,7 +785,7 @@ YUI({
         addRule: function (r) {
             var self = this, 
             id       = Y.guid(), 
-            dom      = Y.one(self.filterDom), 
+            dom      = self.filterDom,
             row, rule, 
             p = {
                 type   : r.type,
@@ -735,8 +822,7 @@ YUI({
 
         buildFilter: function () {
             this.filter = {
-                match: Y.one(this.filterDom)
-                    .one('.conjunction').get('value'),
+                match: this.conjunction(),
                 rules: _(this.rules).chain().values().map(function (r) {
                     return r.rule();
                 }).value()
@@ -754,7 +840,7 @@ YUI({
                 self.mark();
                 close();
             },
-            dom = Y.one(self.filterDom);
+            dom = self.filterDom;
 
             dom.all('button').each(mkButton);
 
@@ -765,13 +851,17 @@ YUI({
                 search();
             });
 
-            dom.one('.add').on('click', function () {
-                self.addRule({type: dom.one('.type').get('value')});
-            });
+            dom.one('.type').on('change', function () {
+                var type = this.get('value');
+                if (type) {
+                    self.addRule({type: type});
+                    this.set('value', '');
+                }
+            })
         },
         clearFilters: function () {
             this.rules = {};
-            Y.one(this.filterDom).all('.filter').remove();
+            this.filterDom.all('.filter').remove();
             this.centerFilters();
         },
         refresh: function () {
@@ -803,44 +893,60 @@ YUI({
             });
         },
         render: function () {
-            var self = this, dialog, dt, old;
+            var self = this, dialog, dt, old, root, nt, subscribeButton;
+
+            root = self.root = Y.one('#' + self.rootId);
+            self.ticketView = root.one('.ticket-view');
+            self.ticketEdit = root.one('.ticket-edit');
+            self.filterDom  = root.one('.filter-dialog');
+            self.share      = root.one('.share-this a');
+            self.ruleDom    = root.one('.rules');
+            self.ruleDom.set('text', 'Showing all tickets');
+            nt = root.one('.new-ticket-button');
+
+            root.all('.i18n').each(function (n) {
+                n.set('text', self.i18n(n.get('text')));
+            });
+
+            self.mainTab.set('panelNode', root.one('.main-tab'));
 
             self.fixupEditTemplate();
             self.fixupFilterDialog();
 
             if (self.reporter) {
-                mkButton(self.newTicket).on('click', function () {
+                mkButton(nt).on('click', function () {
                     Ticket.create(self, {
                         severity   : 'minor',
                         visibility : 'public'
-                    }).edit(_.bind(self.createTicket, self));
+                    }).edit(true, _.bind(self.createTicket, self));
                 });
             } 
             else {
-                Y.one(self.newTicket).remove();
+                nt.remove();
             }
 
             self.filterOverlay = dialog = new Y.Overlay({
                 zIndex    : 2,
                 centered  : true,
-                srcNode   : Y.one(self.filterDom).remove()
+                srcNode   : self.filterDom.remove()
                                 .setStyle('display', 'block')
             }).plug(Y.Plugin.OverlayModal);
             dialog.hide();
             dialog.render();
 
-            mkButton(self.filterButton).on('click', function () {
+            mkButton(root.one('.filter-button')).on('click', function () {
                 dialog.show();
             });
 
+            subscribeButton = mkButton(root.one('.subscribe-button'));
+
             self.on('helpdesk:subscriptionChanged', function () {
-                Y.one(self.subscribeButton).one('button')
-                    .set('text', self.i18n(
-                        self.subscribed ? 'Unsubscribe' : 'Subscribe'
-                     ));
+                subscribeButton.set('text', self.i18n(
+                    self.subscribed ? 'Unsubscribe' : 'Subscribe'
+                ));
             });
 
-            mkButton(self.subscribeButton).on('click', function () {
+            subscribeButton.on('click', function () {
                 self.toggleSubscription(null, function (status) {
                     self.subscribed = status;
                     self.fire('helpdesk:subscriptionChanged');
@@ -850,9 +956,9 @@ YUI({
             self.on('helpdesk:config', function () {
                 self.fire('helpdesk:subscriptionChanged');
             });
-            self.tabview.render(self.root);
+            self.tabview.render(root);
             self.datatable = dt = new YAHOO.widget.DataTable(
-                'datatable',
+                Y.Node.getDOMNode(root.one('.datatable')),
                 self.columns,
                 self.ticketsource,
                 {   initialRequest: self.addFilter(
@@ -919,7 +1025,7 @@ YUI({
             };
             return source;
         },
-        extend: function (args) {
+        create: function (args) {
             var self = Y.Object(this);
             _.extend(self, args);
             Y.augment(self, Y.EventTarget);
@@ -928,12 +1034,9 @@ YUI({
             self.tabs         = {};
             self.usersource   = 
                 self.buildUsersource(self.appUrl({func: 'userSource'}));
-            self.ticketsource 
-                = self.buildTicketsource(self.appUrl({func: 'ticketSource'}));
-            self.mainTab      = new Y.Tab({
-                label: 'Tickets', 
-                panelNode: Y.one(args.mainTab)
-            });
+            self.ticketsource = 
+                self.buildTicketsource(self.appUrl({func: 'ticketSource'}));
+            self.mainTab      = new Y.Tab({ label: 'Tickets' });
 
             self.tabview = new Y.TabView({ children: [ self.mainTab ] });
             self.tabview.after('selectionChange', _.bind(self.mark, self));
@@ -965,16 +1068,15 @@ YUI({
             Y.History.on('history:ready', function () {
                 Y.on('domready', function () {
                     self.on('helpdesk:config', function () {
-                        Y.all('.i18n').each(function (n) {
-                            n.set('text', self.i18n(n.get('text')));
-                        });
+                        self.updating = true;
+                        self.render();
+                        delete self.updating;
                         self.fire('helpdesk:ready');
                     });
                 });
             });
 
             self.registerHistory();
-            self.on('helpdesk:ready', _.bind(self.render, self));
 
             return self;
         },
@@ -989,7 +1091,7 @@ YUI({
              * the state consistent.  It screws up the history and can cause
              * bad oscillation between states. */
             if (!this.updating) {
-                Y.History.navigate('helpdesk', this.getState());
+                Y.History.navigate(this.historyId, this.getState());
             }
         },
 
@@ -1016,26 +1118,21 @@ YUI({
         },
         
         registerHistory: function() {
-            var self = this,
-            initial  = Y.History.getBookmarkedState(self.assetId),
-            update   = function (state) {
-                self.on('helpdesk:config', function () {
-                    self.updateFromState(state);
-                });
-            };
+            var initial  = Y.History.getBookmarkedState(this.historyId),
+            update       = this.updateFromState;
 
             if (initial) {
-                update(initial);
+                this.on('helpdesk:ready', _.bind(update, this, initial));
             }
             else {
                 initial = '{open: null, tickets: []}';
             }
-            Y.History.register('helpdesk', initial)
-                .on('history:moduleStateChange', update);
+            Y.History.register(this.historyId, initial)
+                .on('history:moduleStateChange', _.bind(update, this));
         },
 
         appUrl: function(params) {
-            var url = this.app + '?';
+            var url = this.url + '?';
             _.each(params, function (v, k) {
                 url += escape(k) + '=' + escape(v) + '&';
             });
@@ -1068,22 +1165,19 @@ YUI({
                 self.select(tab);
             }
         }
-    },
-    helpdesk = Helpdesk.extend({
-        app             : helpdesk2.app,
-        assetId         : 'helpdesk',
-        root            : '#helpdesk',
-        ticketView      : '#ticket-view-template',
-        ticketEdit      : '#ticket-edit-template',
-        mainTab         : '#main-tab',
-        filterDom       : '#filter-dialog',
-        newTicket       : '#new-ticket',
-        filterButton    : '#filter',
-        subscribeButton : '#subscribe',
-        share           : '#share-this'
-    });
+    };
+
+    // Plug pure to use YUI's selector engine if there's no native browser one
+    if(typeof document.querySelector === 'undefined') {
+        $p.plugins.find = function (n, sel) {
+            return Y.NodeList.getDOMNodes(Y.one(n).all(sel));
+        };
+    }
 
     Y.on('domready', function () {
         Y.History.initialize('#yui-history-field', '#yui-history-iframe');
     });
+
+    Helpdesk2.create = _.bind(Helpdesk.create, Helpdesk);
+    _.each(Helpdesk2.queue, Helpdesk2.create);
 });

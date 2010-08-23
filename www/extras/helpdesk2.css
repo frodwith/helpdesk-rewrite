@@ -9,21 +9,20 @@
 .yui3-usercomplete 
 .yui-ac-input            { position: static }
 
-#share-this              { float: right; clear: right; }
+.helpdesk.yui3-skin-sam
+.yui3-tabview-panel      { background-color: white; }
+
+.share-this              { float: right; clear: right; }
 
 #yui-history-iframe,
-#filter-dialog,
-#ticket-view-template,
-#ticket-edit-template    { display: none }
+.filter-dialog, 
+.template                { display: none }
 
 .ticket                  { background-color: white }
-.ticket .container       { margin-left: -250px; float: left;
-                           position: relative; right: 100%; width: 200%; }
-.left-side               { float: left; left: 50%; width: 50%;
-                           position: relative }
-.left-side .content      { margin: 0 0 0 250px }
-.right-side              { position: relative; left: 250px; 
-                           float: right; width: 250px }
+.ticket .container       { padding-left: 0; padding-right: 250px }
+.left-side               { float: left; position: relative; width: 100% }
+.right-side              { float: left; position: relative;
+                           width: 250px; margin-right: -250px }
 
 .title-area              { float: left; margin-top: 0 }
 .subscribe               { float: right; position: relative; right: 10px }
@@ -39,18 +38,22 @@
 .new-comment td          { border: none }
 .new-comment td.name     { font-weight: bold; text-align: right }
 
-#main-tab .yui-button    { float: right; }
-#main-tab .yui-button 
+div.attach-box           { width: 300px }
+.attach-box input        { width: 260px }
+
+.main-tab .yui-button    { float: right; }
+.main-tab .yui-button 
 button                   { padding-left: 25px !important;
                            background-repeat: no-repeat;
                            background-position: 5px 50% }
 
-#filter     button       { background-image: url('icons/magnifier.png') }
-#subscribe  button       { background-image: url('icons/email.png') }
-#new-ticket button       { background-image: url('icons/bug_add.png') }
+.filter-button button    { background-image: url('icons/magnifier.png') }
+.subscribe-button button { background-image: url('icons/email.png') }
+.new-ticket-button 
+            button       { background-image: url('icons/bug_add.png') }
 
-#datatable               { clear: both }
-#datatable table         { width: 100% }
+.datatable               { clear: both }
+.datatable table         { width: 100% }
 
 .comments .header        { text-align: center }
 .comments .author        { font-weight: bold }
@@ -66,13 +69,22 @@ button                   { padding-left: 25px !important;
 
 .right-side .top         { height: 50px }
 .right-side .status      { text-align: center; width: 140px; line-height: 50px;
-                           color: white; background-color: red;
-                           font-size: 17pt; outline: thin solid black;
+                           font-size: 10pt; outline: thin solid black;
                            float: left; height: 100%; overflow: hidden }
 
-.right-side .yui-button  { float: right; width: 100px }
-.right-side .yui-button
-button                   { padding-left: 30px !important; height: 50px;
+.right-side .status.open         { background-color: red;    color: white }
+.right-side .status.acknowledged,
+.right-side .status.confirmed    { background-color: #F90;   color: white }
+.right-side .status.feedback     { background-color: yellow; color: black }
+.right-side .status.resolved     { background-color: lime;   color: white }
+.right-side .status.closed       { background-color: white;  color: black }
+.right-side .status.waiting      { background-color: cyan;   color: black }
+
+
+.ticket .right-side 
+.yui-button              { float: right }
+.ticket .right-side 
+.yui-button button       { padding-left: 30px; width: 100px; height: 50px;
                            background: url('icons/pencil.png') 
                            10% 50% no-repeat }
 
@@ -105,7 +117,13 @@ input.changed            { font-style: normal; color: black }
 .info .name              { font-weight: bold }
 .info .value             { padding-left: 1em }
 
-.add, .rem               { display: inline-block; width: 16px; height: 16px } 
-.add                     { background-image: url(icons/add.png) }
-.rem                     { background-image: url(icons/delete.png) }
-#active-filters td       { border: none }
+.rem                     { display: inline-block; width: 16px; height: 16px;
+                           background-image: url(icons/delete.png) }
+.active-filters td       { border: none }
+.filter 
+.yui-calcontainer        { float: none }
+
+/* IE hack to make the filter dialog less insane */
+* html .active-filters        { width: 500px }
+* html .btn-cell              { width: 10px }
+* html .label-cell            { width: 10em }

@@ -3,6 +3,22 @@ package WebGUI::i18n::English::Asset_Helpdesk2;
 use strict;
 
 our $I18N = {
+    'templateId label' => {
+        message     => q{View Template},
+        lastUpdated => 1281642538,
+    },
+    'templateIdView description' => {
+        message     => q{Template used to render the helpdesk},
+        lastUpdated => 1281642538,
+    },
+    'mailingListAddress label' => {
+        message     => q{Mailing List Address},
+        lastUpdated => 1281642538,
+    },
+    'mailingListAddress description' => {
+        message     => q{List/From/Reply-To address for subscription mails},
+        lastUpdated => 1281642538,
+    },
     'onMail no content' => {
         message     => q{Your message did not contain any content this helpdesk could understand.},
         lastUpdated => 1281368272,
@@ -71,6 +87,10 @@ our $I18N = {
         message     => q{Title},
         lastUpdated => 1278950380,
     },
+    'Comment' => {
+        message     => q{Comment},
+        lastUpdated => 1282239228,
+    },
     'Opened By' => {
         message     => q{Opened By},
         lastUpdated => 1278950380,
@@ -126,6 +146,10 @@ our $I18N = {
     'Resolved' => {
         message     => q{Resolved},
         lastUpdated => 1278950380,
+    },
+    'Closed' => {
+        message     => q{Closed},
+        lastUpdated => 1282246772,
     },
     'Add Attachment' => {
         message     => q{Add Attachment},

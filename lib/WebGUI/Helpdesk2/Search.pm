@@ -54,7 +54,7 @@ has filter_clause => (
 
 sub _userRule {
     my ($self, $which, $users) = @_;
-    return '' unless @$users;
+    return '' unless $users && @$users;
     my $dbh = $self->session->db->dbh;
     my $str = join(',', map { $dbh->quote($_->{id}) } @$users);
     return "t.$which IN ($str)";
@@ -91,7 +91,7 @@ sub _exactRule {
 
 sub _ruleSql {
     my ($self, $rule) = @_;
-    my $a = $rule->{arguments};
+    my $a = $rule->{args};
     my $t = $rule->{type};
     given ($t) {
         when ([qw(assignedTo openedBy)]) {
@@ -129,11 +129,13 @@ has where_clause => (
 
 sub _build_where_clause {
     my $self    = shift;
+    my $session = $self->session;
+    my $dbh     = $session->db->dbh;
     my $filter  = $self->filter_clause;
-    my @clauses;
+    my $id      = $dbh->quote($self->helpdesk->getId);
+    my @clauses = ("t.helpdesk = $id");
     unless ($self->canStaff) {
-        my $session = $self->session;
-        my $user = $session->db->dbh->quote($session->user->userId);
+        my $user = $dbh->quote($session->user->userId);
         push @clauses, "t.public = 1 OR t.openedBy = $user"
     }
     push(@clauses, $filter) if $filter;
