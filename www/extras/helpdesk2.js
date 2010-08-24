@@ -73,7 +73,7 @@ YUI({
     function propClass(get) {
         return function (a) {
             return ' ' + get(a);
-        }
+        };
     }
 
     function lookup(map) {
@@ -526,6 +526,11 @@ YUI({
             'cosmetic' : 'Cosmetic'
         },
 
+        initialSort: {
+            key: 'lastReply', 
+            dir: YAHOO.widget.DataTable.CLASS_DESC 
+        },
+
         getState: function () {
             var selection = this.tabview.get('selection'),
             tickets      = _(this.tabs).chain().values().sortBy(function (t) {
@@ -538,54 +543,63 @@ YUI({
                 selection.get('label');
 
             return Y.JSON.stringify({
-                open    : label || null, 
-                tickets : tickets,
-                filter  : this.filter
+                open     : label || null, 
+                tickets  : tickets,
+                filter  : this.filter,
+                pn      : this.pageNumber,
+                rpp     : this.rowsPerPage,
+                sort    : this.sortedBy
             });
         },
 
         updateFromState: function (state) {
+            var currentlyOpen, filter, dt = this.datatable, pag = dt.get('paginator');
+
             if(this.updating) {
                 return;
             }
-            this.updating = 1;
+            this.updating = true;
 
-            var self      = this,
-            currentlyOpen = _.clone(self.tabs),
-            filter;
+            currentlyOpen = _.clone(this.tabs);
 
             state = Y.JSON.parse(state);
-            filter = self.filter = state.filter;
+            filter = this.filter = state.filter;
             if (filter) {
-                self.clearFilters();
-                _.each(self.filter.rules, _.bind(self.addRule, self));
-                self.conjunction(filter.match);
+                this.clearFilters();
+                _.each(this.filter.rules, _.bind(this.addRule, this));
+                this.conjunction(filter.match);
             }
-            self.refresh();
 
             _.each(state.tickets, function (id) {
                 if (id in currentlyOpen) {
                     delete currentlyOpen[id];
                 }
                 else {
-                    self.openTab(id);
+                    this.openTab(id);
                 }
-            });
-            _(currentlyOpen).chain().keys().each(_.bind(self.closeTab, self));
+            }, this);
+            _(currentlyOpen).chain().keys().each(_.bind(this.closeTab, this));
             if (state.open) {
-                self.select(self.tabs[state.open]);
+                this.select(this.tabs[state.open]);
             }
             else {
-                self.select(self.mainTab);
+                this.select(this.mainTab);
             }
-            if (self.closeDialog) {
-                self.closeDialog();
+            if (this.closeDialog) {
+                this.closeDialog();
             }
 
-            self.ruleDom.set('text', self.ruleString());
-
-            self.share.setAttribute('href', window.location);
-
+            // Let's only draw this stuff if the main tab is selected
+            if (this.tabview.get('selection') === this.mainTab) {
+                dt.set('sortedBy', this.sortedBy = state.sort);
+                this.ruleDom.set('text', this.ruleString());
+                this.share.setAttribute('href', window.location);
+                if (!this.skipRefresh) {
+                    pag.setPage(this.pageNumber = state.pn, true);
+                    pag.setRowsPerPage(this.rowsPerPage = state.rpp, true);
+                    this.refresh();
+                }
+            }
             delete this.updating;
         },
 
@@ -598,18 +612,18 @@ YUI({
         },
 
         ruleString: function () {
-            var n = this.typeNames;
             if (_.values(this.rules).length < 1) {
                 return 'Showing all tickets';
             }
             return 'Showing ' +
+                // Convert from camel-case to lowercase with spaces
                 this.conjunction() + ' of: ' +
                 _.map(this.rules, function (v, k) {
                     var name = _(v.type.split('')).chain().map(function (c) {
                         return c.match(/[A-Z]/) ? ' ' + c.toLowerCase() : c;
                     }).value().join('');
                     return name + ': ' + v.stringify();
-                }).join(', ')
+                }).join(', ');
         },
 
         addComment: function (id, comment, callback) {
@@ -622,7 +636,6 @@ YUI({
                 },
                 on: { 
                     complete: function() {
-                        self.refresh();
                         self.getTicket(id, callback);
                     }
                 }
@@ -648,7 +661,6 @@ YUI({
                 on: { 
                     complete: function (i, r) {
                         var id = r.responseText;
-                        self.refresh();
                         self.openTab(id, true);
                         callback(id);
                     }
@@ -663,7 +675,6 @@ YUI({
                 form: { id: form },
                 on: { 
                     complete: function () {
-                        self.refresh();
                         self.getTicket(id, callback);
                     }
                 }
@@ -836,7 +847,6 @@ YUI({
             },
             search = function () {
                 self.buildFilter();
-                self.refresh();
                 self.mark();
                 close();
             },
@@ -855,9 +865,9 @@ YUI({
                 var type = this.get('value');
                 if (type) {
                     self.addRule({type: type});
-                    this.set('value', '');
+                    Y.Node.getDOMNode(this).selectedIndex = 0;
                 }
-            })
+            });
         },
         clearFilters: function () {
             this.rules = {};
@@ -961,18 +971,25 @@ YUI({
                 Y.Node.getDOMNode(root.one('.datatable')),
                 self.columns,
                 self.ticketsource,
-                {   initialRequest: self.addFilter(
-                        'sort=lastReply&dir=desc&startIndex=0&results=25'
-                    ),
+                {   
+                    initialLoad: false,
                     dynamicData: true,
-                    sortedBy: { 
-                        key: "lastReply", 
-                        dir: YAHOO.widget.DataTable.CLASS_DESC 
-                    },
-                    paginator: new YAHOO.widget.Paginator({ rowsPerPage: 25 })
+                    sortedBy: self.initialSort,
+                    paginator: new YAHOO.widget.Paginator({ 
+                        template           : '{FirstPageLink} {PreviousPageLink} ' +
+                                             '{PageLinks} {NextPageLink} {LastPageLink} ' +
+                                             '{RowsPerPageDropdown}',
+                        rowsPerPage        : 10,
+                        totalRecords       : YAHOO.widget.Paginator.VALUE_UNLIMITED,
+                        rowsPerPageOptions : [10, 25, 50, 100]
+                    })
                 }
             );
             dt.handleDataReturnPayload = function(req, res, pl) {
+                self.sortedBy    = pl.sortedBy;
+                self.pageNumber  = pl.pagination.page;
+                self.rowsPerPage = pl.pagination.rowsPerPage;
+                self.mark(true);
                 pl.totalRecords = res.meta.totalRecords;
                 return pl;
             };
@@ -1009,7 +1026,7 @@ YUI({
             source.responseType = YAHOO.util.DataSource.TYPE_JSON;
             source.responseSchema = { 
                 resultsList: 'records',
-                metaFields: { totalRecords : 'total' },
+                metaFields: { totalRecords : 'count' },
                 fields: [
                     { key: 'id',                  parser: 'number'  },
                     { key: 'url',                 parser: 'string'  },
@@ -1039,7 +1056,7 @@ YUI({
             self.mainTab      = new Y.Tab({ label: 'Tickets' });
 
             self.tabview = new Y.TabView({ children: [ self.mainTab ] });
-            self.tabview.after('selectionChange', _.bind(self.mark, self));
+            self.tabview.after('selectionChange', _.bind(self.mark, self, false));
 
             self.publish('helpdesk:ready', { fireOnce : true });
             self.publish('helpdesk:config', { fireOnce : true });
@@ -1086,11 +1103,12 @@ YUI({
             return this.strings[key] || ('#' + key + '#');
         },
 
-        mark: function () {
+        mark: function (skipRefresh) {
             /* We will not mark the state while we're in the process of making
              * the state consistent.  It screws up the history and can cause
              * bad oscillation between states. */
             if (!this.updating) {
+                this.skipRefresh = skipRefresh;
                 Y.History.navigate(this.historyId, this.getState());
             }
         },
@@ -1099,6 +1117,7 @@ YUI({
             var tab = this.tabs[id];
             delete this.tabs[id];
             tab.remove();
+            this.mark();
         },
 
         userData: function (id, fn) {
@@ -1118,17 +1137,19 @@ YUI({
         },
         
         registerHistory: function() {
-            var initial  = Y.History.getBookmarkedState(this.historyId),
-            update       = this.updateFromState;
+            var initial = 
+                Y.History.getBookmarkedState(this.historyId) ||
+                Y.JSON.stringify({
+                    open     : null,
+                    tickets  : [],
+                    sortedBy : this.initialSort,
+                    pn       : 1,
+                    rpp      : 10
+                });
 
-            if (initial) {
-                this.on('helpdesk:ready', _.bind(update, this, initial));
-            }
-            else {
-                initial = '{open: null, tickets: []}';
-            }
+            this.on('helpdesk:ready', _.bind(this.updateFromState, this, initial));
             Y.History.register(this.historyId, initial)
-                .on('history:moduleStateChange', _.bind(update, this));
+                .on('history:moduleStateChange', _.bind(this.updateFromState, this));
         },
 
         appUrl: function(params) {

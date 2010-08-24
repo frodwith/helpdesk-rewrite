@@ -55,6 +55,10 @@ our $I18N = {
         message     => q{Users subscribed to this helpdesk},
         lastUpdated => 1278540767,
     },
+    'Close Old Tickets' => {
+        message     => q{Close Old Tickets},
+        lastUpdated => 1282582854,
+    },
     'Share this' => {
         message     => q{Share this},
         lastUpdated => 1278950380,
@@ -250,6 +254,10 @@ our $I18N = {
     'of the following rules' => {
         message     => q{of the following rules},
         lastUpdated => 1278950380,
+    },
+    'Add New' => {
+        message     => q{Add New},
+        lastUpdated => 1282584412,
     },
     'Ticket Status' => {
         message     => q{Ticket Status},

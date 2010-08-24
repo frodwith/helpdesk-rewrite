@@ -73,13 +73,18 @@ sub execute {
     my $session = $self->session;
     my $stop    = time + $self->getTTL;
     my $sql     = q{
-        SELECT * FROM (
-            SELECT   MAX(timestamp) as stamp, helpdesk, ticket
+        SELECT c1.helpdesk, c1.ticket
+        FROM   Helpdesk2_Comment AS c1
+        JOIN   (
+            SELECT   helpdesk, ticket, MAX(timestamp) as timestamp
             FROM     Helpdesk2_Comment
-            WHERE    status IN ('feedback', 'resolved')
             GROUP BY helpdesk, ticket
-        ) t
-        WHERE t.stamp < ?
+        ) AS c2
+            ON c1.helpdesk  = c2.helpdesk 
+           AND c1.ticket    = c2.ticket
+           AND c1.timestamp = c2.timestamp
+        WHERE  c1.status IN ('feedback', 'resolved')
+        AND    c1.timestamp < ?
     };
 
     # Log in as admin to post closing comments

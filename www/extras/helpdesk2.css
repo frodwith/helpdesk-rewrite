@@ -69,7 +69,7 @@ button                   { padding-left: 25px !important;
 
 .right-side .top         { height: 50px }
 .right-side .status      { text-align: center; width: 140px; line-height: 50px;
-                           font-size: 10pt; outline: thin solid black;
+                           font-size: 12px; outline: thin solid black;
                            float: left; height: 100%; overflow: hidden }
 
 .right-side .status.open         { background-color: red;    color: white }
@@ -84,8 +84,9 @@ button                   { padding-left: 25px !important;
 .ticket .right-side 
 .yui-button              { float: right }
 .ticket .right-side 
-.yui-button button       { padding-left: 30px; width: 100px; height: 50px;
-                           background: url('icons/pencil.png') 
+.yui-button button       { padding: 0; padding-left: 30px; width: 100px; 
+                           height: 50px; line-height: 50px; font-size: 12px;
+                           background: url('icons/pencil.png')
                            10% 50% no-repeat }
 
 .right-side .visibility  { width: 100%; padding: 5px 0; text-align: center;
