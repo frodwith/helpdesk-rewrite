@@ -5,13 +5,58 @@ use strict;
 
 use WebGUI::Group;
 
+=head1 NAME
+
+WebGUI::AssetCollateral::Helpdesk2::Subscription
+
+=head1 DESCRIPTION
+
+Groups that disappear when there's no one in them
+
+=head1 LEGAL
+
+ -------------------------------------------------------------------
+  WebGUI is Copyright 2001-2009 Plain Black Corporation.
+ -------------------------------------------------------------------
+  Please read the legal notices (docs/legal.txt) and the license
+  (docs/license.txt) that came with this distribution before using
+  this software.
+ -------------------------------------------------------------------
+  http://www.plainblack.com                     info@plainblack.com
+ -------------------------------------------------------------------
+
+=head1 CLASS METHODS
+
+=cut
+
+#-------------------------------------------------------------------
+
+=head2 subscribe (%args)
+
+Subscribe to a group.  Takes the following args:
+
+=head3 session
+
+=head3 user
+
+A userId or user object to subscribe to the grup
+
+=head3 group
+
+The group (or groupId) to subscribe to.  One will be created if this is
+invalid somehow.
+
+=head3 setGroup
+
+A callback to pass the created group to, if one was created.
+
+=cut
+
 sub subscribe {
     my ($class, %args) = @_;
     my ($session, $user, $group);
 
     $session = $args{session};
-    use Data::Dumper;
-    $session->log->error(Dumper \%args);
     
     $user = $args{user} || return;
     $user = $user->userId if eval { $user->can('userId') };
@@ -33,6 +78,28 @@ sub subscribe {
     my $set = $args{setGroup};
     $set && $set->($group);
 }
+
+#-------------------------------------------------------------------
+
+=head2 unsubscribe (%args)
+
+Subscribe to a group.  Takes the following args:
+
+=head3 session
+
+=head3 user
+
+A userId or user object to unsubscribe from the grup
+
+=head3 group
+
+The group (or groupId) to unsubscribe from.
+
+=head3 unsetGroup
+
+A callback to call if the group had no more users in it and was deleted.
+
+=cut
 
 sub unsubscribe {
     my ($class, %args) = @_;

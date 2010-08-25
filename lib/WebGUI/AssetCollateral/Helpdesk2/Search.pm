@@ -1,4 +1,5 @@
 package WebGUI::AssetCollateral::Helpdesk2::Search;
+
 use Moose;
 use Moose::Util::TypeConstraints;
 use Template;
@@ -8,57 +9,73 @@ use Modern::Perl;
 
 use namespace::clean -except => 'meta';
 
-has helpdesk => (
-    is      => 'ro',
-    isa     => 'WebGUI::Asset::Wobject::Helpdesk2',
-    handles => ['session', 'canStaff'],
-);
+=head1 NAME
 
-has size => (
-    is      => 'ro',
-    isa     => 'Int',
-    default => 25,
-);
+WebGUI::AssetCollateral::Helpdesk2::Search
 
-has start => (
-    is      => 'ro',
-    isa     => 'Int',
-    default => 0,
-);
+=head1 LEGAL
 
-has sort => (
-    is      => 'ro',
-    isa     => enum([qw(
-        id title openedBy openedOn assignedTo status lastReply
-    )]),
-    default => 'id',
-);
+ -------------------------------------------------------------------
+  WebGUI is Copyright 2001-2009 Plain Black Corporation.
+ -------------------------------------------------------------------
+  Please read the legal notices (docs/legal.txt) and the license
+  (docs/license.txt) that came with this distribution before using
+  this software.
+ -------------------------------------------------------------------
+  http://www.plainblack.com                     info@plainblack.com
+ -------------------------------------------------------------------
 
-has dir => (
-    is      => 'ro',
-    isa     => enum([qw(asc desc)]),
-    default => 'asc',
-);
+=head1 METHODS
 
-has filter => (
-    is        => 'ro',
-    isa       => 'Maybe[HashRef]',
-    predicate => 'has_filter',
-);
+=cut
 
-has filter_clause => (
-    is         => 'ro',
-    init_arg   => undef,
-    lazy_build => 1,
-);
+#-------------------------------------------------------------------
 
-sub _userRule {
-    my ($self, $which, $users) = @_;
-    return '' unless $users && @$users;
-    my $dbh = $self->session->db->dbh;
-    my $str = join(',', map { $dbh->quote($_->{id}) } @$users);
-    return "t.$which IN ($str)";
+=head2 _build_filter_clause
+
+=cut
+
+sub _build_filter_clause {
+    my $self = shift;
+    my $filter = $self->has_filter && $self->filter || return '';
+    my $rules  = $filter->{rules} || return '';
+
+    my @built  = 
+        grep { $_ } 
+        map { my $r = $self->_ruleSql($_); $r && "($r)" } 
+        @$rules;
+
+    my $conj = $filter->{match} eq 'all' ? 'AND' : 'OR';
+    join(" $conj ", @built);
 }
+
+#-------------------------------------------------------------------
+
+=head2 _build_where_clause
+
+=cut
+
+sub _build_where_clause {
+    my $self    = shift;
+    my $session = $self->session;
+    my $dbh     = $session->db->dbh;
+    my $filter  = $self->filter_clause;
+    my $id      = $dbh->quote($self->helpdesk->getId);
+    my @clauses = ("t.helpdesk = $id");
+    unless ($self->canStaff) {
+        my $user = $dbh->quote($session->user->userId);
+        push @clauses, "t.public = 1 OR t.openedBy = $user"
+    }
+    push(@clauses, $filter) if $filter;
+    my $where = join(" AND ", map { "($_)" } @clauses);
+    return $where && "WHERE $where";
+}
+
+#-------------------------------------------------------------------
+
+=head2 _dateRule
+
+=cut
 
 sub _dateRule {
     my ($self, $which, $from, $to) = @_;
@@ -81,6 +98,12 @@ sub _dateRule {
     }
 }
 
+#-------------------------------------------------------------------
+
+=head2 _exactRule
+
+=cut
+
 sub _exactRule {
     my ($self, $which, $values) = @_;
     return '' unless @$values;
@@ -88,6 +111,12 @@ sub _exactRule {
     my $str = join(',', map { $dbh->quote($_) } @$values);
     return "t.$which IN ($str)";
 }
+
+#-------------------------------------------------------------------
+
+=head2 _ruleSql
+
+=cut
 
 sub _ruleSql {
     my ($self, $rule) = @_;
@@ -107,41 +136,184 @@ sub _ruleSql {
     return;
 }
 
-sub _build_filter_clause {
-    my $self = shift;
-    my $filter = $self->has_filter && $self->filter || return '';
-    my $rules  = $filter->{rules} || return '';
 
-    my @built  = 
-        grep { $_ } 
-        map { my $r = $self->_ruleSql($_); $r && "($r)" } 
-        @$rules;
+#-------------------------------------------------------------------
 
-    my $conj = $filter->{match} eq 'all' ? 'AND' : 'OR';
-    join(" $conj ", @built);
+=head2 _userRule
+
+These methods assemble chunks of SQL to be used in the main query, and are
+private.
+
+=cut
+
+sub _userRule {
+    my ($self, $which, $users) = @_;
+    return '' unless $users && @$users;
+    my $dbh = $self->session->db->dbh;
+    my $str = join(',', map { $dbh->quote($_->{id}) } @$users);
+    return "t.$which IN ($str)";
 }
 
-has where_clause => (
+
+#-------------------------------------------------------------------
+
+=head2 canStaff ( [ $user ] )
+
+Asks the helpdesk if the given user has staff permissions.
+
+=head2 clear_filter_clause
+
+=head2 clear_where_clause
+
+=cut
+
+#-------------------------------------------------------------------
+
+=head2 count
+
+Returns the number of records that match the given search parameters
+
+=cut
+
+sub count {
+    my $self    = shift;
+    my $where   = $self->where_clause;
+    my $sql     = "select count(*) from Helpdesk2_Ticket t $where";
+
+    return $self->session->db->quickScalar($sql);
+}
+
+=head2 dir
+
+The direction of the sort (asc or desc)
+
+=cut
+
+has dir => (
+    is      => 'ro',
+    isa     => enum([qw(asc desc)]),
+    default => 'asc',
+);
+
+=head2 filter
+
+An optional hashref of rules of the form:
+
+    {
+        match => 'any' # or all 
+        rules = [
+            {
+                type => 'assignedTo',
+                args => 'frodwith'
+            }
+        ]
+    }
+
+=cut
+
+has filter => (
+    is        => 'ro',
+    isa       => 'Maybe[HashRef]',
+    predicate => 'has_filter',
+);
+
+=head2 filter_clause
+
+A chunk of sql that implements the rules given in filter.
+
+=cut
+
+has filter_clause => (
     is         => 'ro',
     init_arg   => undef,
     lazy_build => 1,
 );
 
-sub _build_where_clause {
-    my $self    = shift;
-    my $session = $self->session;
-    my $dbh     = $session->db->dbh;
-    my $filter  = $self->filter_clause;
-    my $id      = $dbh->quote($self->helpdesk->getId);
-    my @clauses = ("t.helpdesk = $id");
-    unless ($self->canStaff) {
-        my $user = $dbh->quote($session->user->userId);
-        push @clauses, "t.public = 1 OR t.openedBy = $user"
-    }
-    push(@clauses, $filter) if $filter;
-    my $where = join(" AND ", map { "($_)" } @clauses);
-    return $where && "WHERE $where";
-}
+=head2 has_filter
+
+=head2 has_filter_clause
+
+=head2 has_where_clause
+
+=head2 helpdesk
+
+The helpdesk this search is for
+
+=cut
+
+has helpdesk => (
+    is      => 'ro',
+    isa     => 'WebGUI::Asset::Wobject::Helpdesk2',
+    handles => ['session', 'canStaff'],
+);
+
+=head2 meta
+
+=head2 new (%args)
+
+Standard Moose constructor.  Accepts the following arguments:
+
+=head3 dir
+
+=head3 filter
+
+=head3 helpdesk
+
+=head3 size
+
+=head3 sort
+
+=head3 start
+
+=head2 session
+
+The helpdesk's session
+
+=head2 size
+
+Limit the number of tickets returned by the search.
+
+=cut
+
+has size => (
+    is      => 'ro',
+    isa     => 'Int',
+    default => 25,
+);
+
+=head2 sort
+
+The field name to sort by
+
+=cut
+
+has sort => (
+    is      => 'ro',
+    isa     => enum([qw(
+        id title openedBy openedOn assignedTo status lastReply
+    )]),
+    default => 'id',
+);
+
+=head2 start
+
+The number of records to skip (for pagination)
+
+=cut
+
+has start => (
+    is      => 'ro',
+    isa     => 'Int',
+    default => 0,
+);
+
+#-------------------------------------------------------------------
+
+=head2 tickets
+
+Returns a list of tickets that match the search criteria
+
+=cut
 
 sub tickets {
     my $self = shift;
@@ -177,13 +349,17 @@ SQL
            @{ $self->session->db->buildArrayRefOfHashRefs($sql) }
 }
 
-sub count {
-    my $self    = shift;
-    my $where   = $self->where_clause;
-    my $sql     = "select count(*) from Helpdesk2_Ticket t $where";
+=head2 where_clause
 
-    return $self->session->db->quickScalar($sql);
-}
+A chunk of SQL that limits the returned results.
+
+=cut
+
+has where_clause => (
+    is         => 'ro',
+    init_arg   => undef,
+    lazy_build => 1,
+);
 
 __PACKAGE__->meta->make_immutable;
 

@@ -10,6 +10,94 @@ use WebGUI::User;
 
 use namespace::clean -except => 'meta';
 
+=head1 NAME
+
+WebGUI::AssetCollateral::Helpdesk2::Ticket
+
+=head1 LEGAL
+
+ -------------------------------------------------------------------
+  WebGUI is Copyright 2001-2009 Plain Black Corporation.
+ -------------------------------------------------------------------
+  Please read the legal notices (docs/legal.txt) and the license
+  (docs/license.txt) that came with this distribution before using
+  this software.
+ -------------------------------------------------------------------
+  http://www.plainblack.com                     info@plainblack.com
+ -------------------------------------------------------------------
+
+=head1 METHODS
+
+FIX ME
+
+_addComment
+_build_commentCount
+_build_comments
+_build_id
+_build_subscribers
+_build_url
+_countCommentArray
+_incCount
+_killGroupId
+_setAssignedBy
+_setAssignedOn
+_setAssignedTo
+_setCommentCount
+_setGroupId
+_setLastReply
+_setSubscriptionGroup
+assign
+assignedBy
+assignedOn
+assignedTo
+clear_comments
+clear_id
+clear_subscribers
+clear_url
+commentCount
+comments
+delete
+getComment
+getSubscriptionGroup
+groupId
+has_commentCount
+has_comments
+has_id
+has_subscribers
+has_url
+helpdesk
+id
+isOwner
+keywords
+lastReply
+load
+loadFromRow
+meta
+new
+notifySubscribers
+open
+openedBy
+openedOn
+os
+postComment
+public
+render
+renderUser
+save
+session
+severity
+status
+subscribe
+title
+unsubscribe
+url
+webgui
+wre
+
+=cut
+
+#-------------------------------------------------------------------
+
 has helpdesk => (
     is       => 'ro',
     isa      => 'WebGUI::Asset::Wobject::Helpdesk2',
