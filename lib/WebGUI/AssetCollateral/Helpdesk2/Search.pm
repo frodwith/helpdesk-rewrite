@@ -1,9 +1,9 @@
-package WebGUI::Helpdesk2::Search;
+package WebGUI::AssetCollateral::Helpdesk2::Search;
 use Moose;
 use Moose::Util::TypeConstraints;
 use Template;
-use WebGUI::Helpdesk2::Ticket;
-use WebGUI::Helpdesk2::DateFormat;
+use WebGUI::AssetCollateral::Helpdesk2::Ticket;
+use WebGUI::AssetCollateral::Helpdesk2::DateFormat;
 use Modern::Perl;
 
 use namespace::clean -except => 'meta';
@@ -64,7 +64,7 @@ sub _dateRule {
     my ($self, $which, $from, $to) = @_;
     my $dbh = $self->session->db->dbh;
     ($from, $to) = map { $_ && $dbh->quote(
-        WebGUI::Helpdesk2::DateFormat->parse_date($_)->epoch
+        WebGUI::AssetCollateral::Helpdesk2::DateFormat->parse_date($_)->epoch
     ) } ($from, $to);
 
     if ($from && $to) {
@@ -173,7 +173,7 @@ SQL
     my $tt = Template->new;
     $tt->process( \$template, { self => $self }, \my $sql ) or die $tt->error;
 
-    return map { WebGUI::Helpdesk2::Ticket->loadFromRow($self->helpdesk, $_) }
+    return map { WebGUI::AssetCollateral::Helpdesk2::Ticket->loadFromRow($self->helpdesk, $_) }
            @{ $self->session->db->buildArrayRefOfHashRefs($sql) }
 }
 

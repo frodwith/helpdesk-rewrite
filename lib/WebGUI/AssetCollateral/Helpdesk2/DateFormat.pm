@@ -1,4 +1,4 @@
-package WebGUI::Helpdesk2::DateFormat;
+package WebGUI::AssetCollateral::Helpdesk2::DateFormat;
 
 use DateTime::Format::Strptime;
 

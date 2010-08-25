@@ -1,4 +1,4 @@
-package WebGUI::Helpdesk2::Subscription;
+package WebGUI::AssetCollateral::Helpdesk2::Subscription;
 
 use warnings;
 use strict;

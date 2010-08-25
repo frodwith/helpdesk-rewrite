@@ -1,11 +1,11 @@
-package WebGUI::Helpdesk2::Ticket;
+package WebGUI::AssetCollateral::Helpdesk2::Ticket;
 
 use Moose;
 use DateTime;
 use HTML::Entities;
-use WebGUI::Helpdesk2::Comment;
-use WebGUI::Helpdesk2::DateFormat;
-use WebGUI::Helpdesk2::Subscription;
+use WebGUI::AssetCollateral::Helpdesk2::Comment;
+use WebGUI::AssetCollateral::Helpdesk2::DateFormat;
+use WebGUI::AssetCollateral::Helpdesk2::Subscription;
 use WebGUI::User;
 
 use namespace::clean -except => 'meta';
@@ -102,7 +102,7 @@ has lastReply => (
 
 sub postComment {
     my ($self, $body, $status, $storage) = @_;
-    my $comment = WebGUI::Helpdesk2::Comment->insert(
+    my $comment = WebGUI::AssetCollateral::Helpdesk2::Comment->insert(
         ticket => $self,
         body   => $body,
         status => $status || $self->status,
@@ -178,7 +178,7 @@ sub subscribe {
     my $hdid    = $self->helpdesk->getId;
     my $id      = $self->id;
 
-    WebGUI::Helpdesk2::Subscription->subscribe(
+    WebGUI::AssetCollateral::Helpdesk2::Subscription->subscribe(
         session  => $session,
         group    => $self->groupId,
         user     => $session->user,
@@ -196,7 +196,7 @@ sub unsubscribe {
     my $self    = shift;
     my $session = $self->session;
 
-    WebGUI::Helpdesk2::Subscription->unsubscribe(
+    WebGUI::AssetCollateral::Helpdesk2::Subscription->unsubscribe(
         session    => $session,
         group      => $self->groupId,
         user       => $session->user,
@@ -211,7 +211,7 @@ sub unsubscribe {
 
 has comments => (
     traits     => ['Array'],
-    isa        => 'ArrayRef[WebGUI::Helpdesk2::Comment]',
+    isa        => 'ArrayRef[WebGUI::AssetCollateral::Helpdesk2::Comment]',
     lazy_build => 1,
     handles    => {
         _addComment        => 'push',
@@ -222,7 +222,7 @@ has comments => (
 );
 
 sub _build_comments {
-    WebGUI::Helpdesk2::Comment->loadTicketComments(shift);
+    WebGUI::AssetCollateral::Helpdesk2::Comment->loadTicketComments(shift);
 }
 
 has commentCount => (
@@ -279,7 +279,7 @@ sub render {
     for my $key (qw(openedOn assignedOn lastReply)) {
         if (my $stamp = $self->$key) {           
             $hash{$key} = 
-                WebGUI::Helpdesk2::DateFormat->format_datetime($stamp);
+                WebGUI::AssetCollateral::Helpdesk2::DateFormat->format_datetime($stamp);
         }
     }
 

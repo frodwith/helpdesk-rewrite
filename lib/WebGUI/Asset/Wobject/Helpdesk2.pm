@@ -5,9 +5,9 @@ use warnings;
 
 use Encode;
 use WebGUI::International;
-use WebGUI::Helpdesk2::Search;
-use WebGUI::Helpdesk2::Subscription;
-use WebGUI::Helpdesk2::Email;
+use WebGUI::AssetCollateral::Helpdesk2::Search;
+use WebGUI::AssetCollateral::Helpdesk2::Subscription;
+use WebGUI::AssetCollateral::Helpdesk2::Email;
 use WebGUI::Storage;
 use WebGUI::Group;
 use WebGUI::Mail::Send;
@@ -315,7 +315,7 @@ sub www_ticketSource {
         my $v = $form->get( $tr{$k} ) or next;
         $args{$k} = $v;
     }
-    my $search = WebGUI::Helpdesk2::Search->new( \%args );
+    my $search = WebGUI::AssetCollateral::Helpdesk2::Search->new( \%args );
 
     return $self->json( {
             count   => $search->count,
@@ -373,7 +373,7 @@ sub subscribe {
     my $session = $self->session;
     my $id      = $self->getId;
 
-    WebGUI::Helpdesk2::Subscription->subscribe(
+    WebGUI::AssetCollateral::Helpdesk2::Subscription->subscribe(
         session  => $session,
         group    => $self->getSubscriptionGroup,
         user     => $user || $session->user,
@@ -388,7 +388,7 @@ sub unsubscribe {
     my ( $self, $user ) = @_;
     my $session = $self->session;
 
-    WebGUI::Helpdesk2::Subscription->unsubscribe(
+    WebGUI::AssetCollateral::Helpdesk2::Subscription->unsubscribe(
         session    => $session,
         group      => $self->getSubscriptionGroup,
         user       => $user || $session->user,
@@ -461,7 +461,7 @@ sub www_userSource {
 
 sub getTicket {
     my ( $self, $id ) = @_;
-    return WebGUI::Helpdesk2::Ticket->load( $self, $id );
+    return WebGUI::AssetCollateral::Helpdesk2::Ticket->load( $self, $id );
 }
 
 sub attachmentStorage {
@@ -554,7 +554,7 @@ sub www_ticket {
 
     if ( $id eq 'new' ) {
         return $self->forbidden unless $self->canReport;
-        $ticket = WebGUI::Helpdesk2::Ticket->new( helpdesk => $self );
+        $ticket = WebGUI::AssetCollateral::Helpdesk2::Ticket->new( helpdesk => $self );
         $id = $ticket->id;
         my $storage = $self->attachmentStorage('attachment');
         my $comment = $form->get('comment');
@@ -607,7 +607,7 @@ sub onMail {
     my ( $self, $message ) = @_;
     my $session = $self->session;
 
-    $message = WebGUI::Helpdesk2::Email->new(
+    $message = WebGUI::AssetCollateral::Helpdesk2::Email->new(
         session => $session,
         message => $message,
     );
@@ -636,7 +636,7 @@ sub onMail {
         }
     }
     else {
-        $ticket = WebGUI::Helpdesk2::Ticket->open(
+        $ticket = WebGUI::AssetCollateral::Helpdesk2::Ticket->open(
             helpdesk => $self,
             title    => $message->subject,
         );

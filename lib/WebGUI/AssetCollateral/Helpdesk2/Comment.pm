@@ -1,9 +1,9 @@
-package WebGUI::Helpdesk2::Comment;
+package WebGUI::AssetCollateral::Helpdesk2::Comment;
 
 use Moose;
 use DateTime;
 use HTML::Entities;
-use WebGUI::Helpdesk2::Attachment;
+use WebGUI::AssetCollateral::Helpdesk2::Attachment;
 
 use namespace::clean -except => 'meta';
 
@@ -37,7 +37,7 @@ has body => (
 
 has attachments => (
     traits     => ['Array'],
-    isa        => 'ArrayRef[WebGUI::Helpdesk2::Attachment]',
+    isa        => 'ArrayRef[WebGUI::AssetCollateral::Helpdesk2::Attachment]',
     lazy_build => 1,
     handles    => {
         attachments    => 'elements',
@@ -47,7 +47,7 @@ has attachments => (
 );
 
 sub _build_attachments {
-    WebGUI::Helpdesk2::Attachment->loadCommentAttachments(shift);
+    WebGUI::AssetCollateral::Helpdesk2::Attachment->loadCommentAttachments(shift);
 }
 
 has status => (
@@ -58,7 +58,7 @@ has status => (
 
 has ticket => (
     is       => 'ro',
-    isa      => 'WebGUI::Helpdesk2::Ticket',
+    isa      => 'WebGUI::AssetCollateral::Helpdesk2::Ticket',
     required => 1,
     weak_ref => 1,
     handles  => ['session', 'helpdesk', 'renderUser'],
@@ -66,7 +66,7 @@ has ticket => (
 
 sub render {
     my $self = shift;
-    my $ts = WebGUI::Helpdesk2::DateFormat->format_datetime($self->timestamp);
+    my $ts = WebGUI::AssetCollateral::Helpdesk2::DateFormat->format_datetime($self->timestamp);
     return {
         timestamp   => $ts,
         author      => $self->renderUser($self->author),
@@ -79,7 +79,7 @@ sub render {
 sub attach {
     my ($self, $storage) = @_;
     for my $name (@{ $storage->getFiles }) {
-        my $attachment = WebGUI::Helpdesk2::Attachment->insert(
+        my $attachment = WebGUI::AssetCollateral::Helpdesk2::Attachment->insert(
             comment  => $self,
             filename => $name,
             storage  => $storage,

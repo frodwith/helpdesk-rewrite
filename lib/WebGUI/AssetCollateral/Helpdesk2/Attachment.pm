@@ -1,4 +1,4 @@
-package WebGUI::Helpdesk2::Attachment;
+package WebGUI::AssetCollateral::Helpdesk2::Attachment;
 
 use Moose;
 use WebGUI::Storage;
